@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vento_postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: vento
+      POSTGRES_PASSWORD: vento_secret
+      POSTGRES_DB: vento_db
+    volumes:
+      - vento_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vento -d vento_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  vento_pgdata:
+    driver: local
