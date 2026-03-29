@@ -42,6 +42,22 @@ func (h *ProductHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, product)
 }
 
+func (h *ProductHandler) CreateBatch(c *gin.Context) {
+	userID := c.MustGet("userID").(string)
+	var req dto.BatchCreateProductRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	products, err := h.catalogUC.BatchCreateProducts(c.Request.Context(), userID, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, products)
+}
+
 func (h *ProductHandler) Update(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 	productID := c.Param("id")

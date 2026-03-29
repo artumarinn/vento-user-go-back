@@ -44,6 +44,28 @@ func (uc *CatalogUsecases) CreateProduct(ctx context.Context, userID string, req
 	return mapEntityToDTO(p), nil
 }
 
+func (uc *CatalogUsecases) BatchCreateProducts(ctx context.Context, userID string, req dto.BatchCreateProductRequest) ([]dto.ProductResponse, error) {
+	products := make([]*entity.Product, len(req.Products))
+	res := make([]dto.ProductResponse, len(req.Products))
+
+	for i, pReq := range req.Products {
+		p := entity.NewProduct(userID, pReq.Name, pReq.SKU, pReq.Category, pReq.Price)
+		p.Stock = pReq.Stock
+		p.StockUnit = pReq.StockUnit
+		p.MaxStock = pReq.MaxStock
+		p.Supplier = pReq.Supplier
+		p.SupplierCost = pReq.SupplierCost
+		products[i] = p
+		res[i] = mapEntityToDTO(p)
+	}
+
+	if err := uc.repo.SaveBatch(ctx, products); err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
 func (uc *CatalogUsecases) UpdateProduct(ctx context.Context, userID string, productID string, req dto.UpdateProductRequest) (dto.ProductResponse, error) {
 	p, err := uc.repo.GetByID(ctx, productID, userID)
 	if err != nil {

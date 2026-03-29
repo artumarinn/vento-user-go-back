@@ -13,4 +13,5 @@ type ProductRepository interface {
 	Delete(ctx context.Context, id string, userID string) error
 	GetByID(ctx context.Context, id string, userID string) (*entity.Product, error)
 	ListByUserID(ctx context.Context, userID string) ([]*entity.Product, error)
+	SaveBatch(ctx context.Context, products []*entity.Product) error
 }

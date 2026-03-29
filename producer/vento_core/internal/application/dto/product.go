@@ -5,14 +5,19 @@ import "time"
 // CreateProductRequest is the input DTO for creating a new product.
 type CreateProductRequest struct {
 	Name         string   `json:"name" binding:"required"`
-	SKU          string   `json:"sku" binding:"required"`
+	SKU          string   `json:"sku"` // No longer required for AI extraction
 	Category     string   `json:"category"`
 	Stock        float64  `json:"stock"`
 	StockUnit    string   `json:"stock_unit"`
 	MaxStock     *float64 `json:"max_stock"`
-	Price        float64  `json:"price" binding:"required"`
+	Price        float64  `json:"price"`
 	Supplier     string   `json:"supplier"`
 	SupplierCost float64  `json:"supplier_cost"`
+}
+
+// BatchCreateProductRequest is the input DTO for batch creation.
+type BatchCreateProductRequest struct {
+	Products []CreateProductRequest `json:"products"`
 }
 
 // UpdateProductRequest is the input DTO for updating an existing product.

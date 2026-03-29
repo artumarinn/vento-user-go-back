@@ -4,9 +4,10 @@ import "time"
 
 // RegisterRequest is the input DTO for user registration.
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
-	FullName string `json:"full_name" binding:"required"`
+	Email        string `json:"email" binding:"required,email"`
+	Password     string `json:"password" binding:"required,min=8"`
+	FullName     string `json:"full_name" binding:"required"`
+	BusinessName string `json:"business_name" binding:"required"`
 }
 
 // LoginRequest is the input DTO for user login.

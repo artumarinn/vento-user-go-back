@@ -8,7 +8,7 @@ import (
 )
 
 // NewRouter creates and configures the Gin router with all routes.
-func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, authService port.AuthService) *gin.Engine {
+func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, paymentHandler *handler.PaymentHandler, authService port.AuthService) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -45,8 +45,15 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 		{
 			products.GET("", productHandler.List)
 			products.POST("", productHandler.Create)
+			products.POST("/batch", productHandler.CreateBatch)
 			products.PUT("/:id", productHandler.Update)
 			products.DELETE("/:id", productHandler.Delete)
+		}
+
+		payments := v1.Group("/payments")
+		payments.Use(middleware.AuthMiddleware(authService))
+		{
+			payments.GET("", paymentHandler.List)
 		}
 	}
 

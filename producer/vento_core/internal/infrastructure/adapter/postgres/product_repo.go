@@ -91,6 +91,30 @@ func (r *PostgresProductRepository) ListByUserID(ctx context.Context, userID str
 	return products, nil
 }
 
+func (r *PostgresProductRepository) SaveBatch(ctx context.Context, products []*entity.Product) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	query := `
+		INSERT INTO products (id, user_id, name, sku, category, stock, stock_unit, max_stock, price, supplier, supplier_cost, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	`
+
+	for _, p := range products {
+		_, err := tx.ExecContext(ctx, query,
+			p.ID, p.UserID, p.Name, p.SKU, p.Category, p.Stock, p.StockUnit, p.MaxStock, p.Price, p.Supplier, p.SupplierCost, p.CreatedAt, p.UpdatedAt,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
 func mapRowToEntity(row productRow) *entity.Product {
 	return &entity.Product{
 		ID:           row.ID,

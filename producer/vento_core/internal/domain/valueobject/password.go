@@ -1,6 +1,8 @@
 package valueobject
 
 import (
+	"unicode"
+
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/domain"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -14,7 +16,7 @@ type Password struct {
 
 // NewPassword creates a hashed Password from a plain-text password.
 func NewPassword(plain string) (Password, error) {
-	if len(plain) < 8 {
+	if !isPasswordStrong(plain) {
 		return Password{}, domain.ErrWeakPassword
 	}
 	hashed, err := bcrypt.GenerateFromPassword([]byte(plain), bcryptCost)
@@ -22,6 +24,23 @@ func NewPassword(plain string) (Password, error) {
 		return Password{}, err
 	}
 	return Password{hash: string(hashed)}, nil
+}
+
+// isPasswordStrong validates complexity: min 8 chars, 1 uppercase, 1 number.
+func isPasswordStrong(password string) bool {
+	if len(password) < 8 {
+		return false
+	}
+	var hasUpper, hasNumber bool
+	for _, char := range password {
+		switch {
+		case unicode.IsUpper(char):
+			hasUpper = true
+		case unicode.IsNumber(char):
+			hasNumber = true
+		}
+	}
+	return hasUpper && hasNumber
 }
 
 // NewPasswordFromHash creates a Password from an already-hashed string (from DB).

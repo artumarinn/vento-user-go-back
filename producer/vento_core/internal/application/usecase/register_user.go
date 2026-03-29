@@ -36,7 +36,7 @@ func (uc *RegisterUser) Execute(ctx context.Context, req dto.RegisterRequest) (*
 	}
 
 	// Create domain entity (validates email, hashes password)
-	user, err := entity.NewUser(req.Email, req.Password, req.FullName)
+	user, err := entity.NewUser(req.Email, req.Password, req.FullName, req.BusinessName)
 	if err != nil {
 		return nil, err
 	}
