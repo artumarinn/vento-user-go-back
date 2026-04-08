@@ -8,7 +8,7 @@ import (
 )
 
 // NewRouter creates and configures the Gin router with all routes.
-func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, paymentHandler *handler.PaymentHandler, authService port.AuthService) *gin.Engine {
+func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, paymentHandler *handler.PaymentHandler, metaHandler *handler.MetaHandler, authService port.AuthService) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -33,6 +33,11 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 	// API v1
 	v1 := r.Group("/api/v1")
 	{
+		// Internal routes (No Auth required for now, or use a shared secret)
+		internal := v1.Group("/internal")
+		{
+			internal.GET("/meta-config/:platformID", metaHandler.GetByPlatformID)
+		}
 		authGroup := v1.Group("/auth")
 		{
 			authGroup.POST("/register", authHandler.Register)

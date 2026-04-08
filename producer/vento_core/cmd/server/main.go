@@ -29,6 +29,7 @@ func main() {
 	userRepo := postgres.NewPostgresUserRepository(db)
 	productRepo := postgres.NewPostgresProductRepository(db)
 	paymentRepo := postgres.NewPostgresPaymentRepository(db)
+	metaRepo := postgres.NewMetaRepo(db)
 
 	// ── Application: Use Cases ───────────────────────────────────
 	registerUC := usecase.NewRegisterUser(userRepo, jwtService)
@@ -40,7 +41,10 @@ func main() {
 	authHandler := handler.NewAuthHandler(registerUC, loginUC, userRepo)
 	productHandler := handler.NewProductHandler(catalogUC)
 	paymentHandler := handler.NewPaymentHandler(paymentUC)
-	router := http.NewRouter(authHandler, productHandler, paymentHandler, jwtService)
+	metaHandler := handler.NewMetaHandler(metaRepo)
+
+	router := http.NewRouter(authHandler, productHandler, paymentHandler, metaHandler, jwtService)
+
 
 	// ── Start Server ─────────────────────────────────────────────
 	addr := ":" + cfg.ServerPort
