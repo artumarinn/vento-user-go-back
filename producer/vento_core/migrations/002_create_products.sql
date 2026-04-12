@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS products (
     supplier TEXT,
     supplier_cost DECIMAL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, name)
 );
 
 -- Optimize filtering by user

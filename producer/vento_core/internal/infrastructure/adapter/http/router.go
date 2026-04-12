@@ -8,7 +8,7 @@ import (
 )
 
 // NewRouter creates and configures the Gin router with all routes.
-func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, paymentHandler *handler.PaymentHandler, metaHandler *handler.MetaHandler, authService port.AuthService) *gin.Engine {
+func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, paymentHandler *handler.PaymentHandler, orderHandler *handler.OrderHandler, metaHandler *handler.MetaHandler, businessHandler *handler.BusinessHandler, authService port.AuthService) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -37,6 +37,11 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 		internal := v1.Group("/internal")
 		{
 			internal.GET("/meta-config/:platformID", metaHandler.GetByPlatformID)
+			internal.GET("/business-profile/:userID", businessHandler.GetProfileInternal)
+			internal.GET("/products/:userID", productHandler.ListInternal)
+			internal.POST("/products/sync", productHandler.SyncFromIA)
+			internal.POST("/orders/sync", orderHandler.SyncFromIA)
+			internal.POST("/payments/sync", paymentHandler.SyncFromIA)
 		}
 		authGroup := v1.Group("/auth")
 		{
@@ -53,6 +58,27 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 			products.POST("/batch", productHandler.CreateBatch)
 			products.PUT("/:id", productHandler.Update)
 			products.DELETE("/:id", productHandler.Delete)
+		}
+
+		// Alias for Frontend compatibility
+		catalog := v1.Group("/catalog")
+		catalog.Use(middleware.AuthMiddleware(authService))
+		{
+			catalog.GET("", productHandler.List)
+			catalog.POST("", productHandler.Create)
+		}
+
+		business := v1.Group("/business-profile")
+		business.Use(middleware.AuthMiddleware(authService))
+		{
+			business.GET("", businessHandler.GetProfile)
+			business.POST("", businessHandler.SaveProfile)
+		}
+
+		dashboard := v1.Group("/dashboard")
+		dashboard.Use(middleware.AuthMiddleware(authService))
+		{
+			dashboard.GET("/stats", businessHandler.GetStats)
 		}
 
 		payments := v1.Group("/payments")

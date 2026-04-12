@@ -38,6 +38,13 @@ func (r *PostgresProductRepository) Save(ctx context.Context, p *entity.Product)
 	query := `
 		INSERT INTO products (id, user_id, name, sku, category, stock, stock_unit, max_stock, price, supplier, supplier_cost, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT (user_id, name) DO UPDATE SET
+			sku = EXCLUDED.sku,
+			category = EXCLUDED.category,
+			stock = EXCLUDED.stock,
+			price = EXCLUDED.price,
+			supplier = EXCLUDED.supplier,
+			updated_at = EXCLUDED.updated_at
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		p.ID, p.UserID, p.Name, p.SKU, p.Category, p.Stock, p.StockUnit, p.MaxStock, p.Price, p.Supplier, p.SupplierCost, p.CreatedAt, p.UpdatedAt,
@@ -101,6 +108,13 @@ func (r *PostgresProductRepository) SaveBatch(ctx context.Context, products []*e
 	query := `
 		INSERT INTO products (id, user_id, name, sku, category, stock, stock_unit, max_stock, price, supplier, supplier_cost, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT (user_id, name) DO UPDATE SET
+			sku = EXCLUDED.sku,
+			category = EXCLUDED.category,
+			stock = EXCLUDED.stock,
+			price = EXCLUDED.price,
+			supplier = EXCLUDED.supplier,
+			updated_at = EXCLUDED.updated_at
 	`
 
 	for _, p := range products {

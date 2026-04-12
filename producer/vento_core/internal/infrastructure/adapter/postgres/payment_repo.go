@@ -65,3 +65,27 @@ func (r *PostgresPaymentRepository) Save(ctx context.Context, p *entity.Payment)
 	)
 	return err
 }
+
+func (r *PostgresPaymentRepository) SaveBatch(ctx context.Context, payments []*entity.Payment) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	query := `
+		INSERT INTO payments (id, user_id, client_name, amount, status, channel, concept, comprobante_url, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`
+
+	for _, p := range payments {
+		_, err := tx.ExecContext(ctx, query,
+			p.ID, p.UserID, p.ClientName, p.Amount, string(p.Status), p.Channel, p.Concept, p.ComprobanteURL, p.CreatedAt, p.UpdatedAt,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}

@@ -50,11 +50,14 @@ func (uc *CatalogUsecases) BatchCreateProducts(ctx context.Context, userID strin
 
 	for i, pReq := range req.Products {
 		p := entity.NewProduct(userID, pReq.Name, pReq.SKU, pReq.Category, pReq.Price)
+		if pReq.UserID != "" { p.UserID = pReq.UserID }
+		
 		p.Stock = pReq.Stock
 		p.StockUnit = pReq.StockUnit
-		p.MaxStock = pReq.MaxStock
+		if pReq.MaxStock != nil { p.MaxStock = pReq.MaxStock }
 		p.Supplier = pReq.Supplier
 		p.SupplierCost = pReq.SupplierCost
+		
 		products[i] = p
 		res[i] = mapEntityToDTO(p)
 	}

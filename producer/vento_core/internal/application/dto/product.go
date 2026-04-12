@@ -4,6 +4,7 @@ import "time"
 
 // CreateProductRequest is the input DTO for creating a new product.
 type CreateProductRequest struct {
+	UserID       string   `json:"user_id"` // Internal use for sync
 	Name         string   `json:"name" binding:"required"`
 	SKU          string   `json:"sku"` // No longer required for AI extraction
 	Category     string   `json:"category"`

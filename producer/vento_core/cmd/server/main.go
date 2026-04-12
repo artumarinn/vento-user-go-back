@@ -29,21 +29,27 @@ func main() {
 	userRepo := postgres.NewPostgresUserRepository(db)
 	productRepo := postgres.NewPostgresProductRepository(db)
 	paymentRepo := postgres.NewPostgresPaymentRepository(db)
+	orderRepo := postgres.NewPostgresOrderRepository(db)
 	metaRepo := postgres.NewMetaRepo(db)
+	businessRepo := postgres.NewBusinessRepo(db)
 
 	// ── Application: Use Cases ───────────────────────────────────
 	registerUC := usecase.NewRegisterUser(userRepo, jwtService)
 	loginUC := usecase.NewLoginUser(userRepo, jwtService)
 	catalogUC := usecase.NewCatalogUsecases(productRepo)
 	paymentUC := usecase.NewPaymentUsecases(paymentRepo)
+	orderUC := usecase.NewOrderUsecases(orderRepo)
+	businessUC := usecase.NewBusinessProfileUsecases(businessRepo)
 
 	// ── Infrastructure: HTTP ─────────────────────────────────────
 	authHandler := handler.NewAuthHandler(registerUC, loginUC, userRepo)
 	productHandler := handler.NewProductHandler(catalogUC)
 	paymentHandler := handler.NewPaymentHandler(paymentUC)
+	orderHandler := handler.NewOrderHandler(orderUC)
 	metaHandler := handler.NewMetaHandler(metaRepo)
+	businessHandler := handler.NewBusinessHandler(businessUC)
 
-	router := http.NewRouter(authHandler, productHandler, paymentHandler, metaHandler, jwtService)
+	router := http.NewRouter(authHandler, productHandler, paymentHandler, orderHandler, metaHandler, businessHandler, jwtService)
 
 
 	// ── Start Server ─────────────────────────────────────────────
