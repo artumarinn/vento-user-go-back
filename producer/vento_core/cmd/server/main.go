@@ -32,6 +32,7 @@ func main() {
 	orderRepo := postgres.NewPostgresOrderRepository(db)
 	metaRepo := postgres.NewMetaRepo(db)
 	businessRepo := postgres.NewBusinessRepo(db)
+	syncJobRepo := postgres.NewPostgresSyncJobRepository(db)
 
 	// ── Application: Use Cases ───────────────────────────────────
 	registerUC := usecase.NewRegisterUser(userRepo, jwtService)
@@ -48,8 +49,9 @@ func main() {
 	orderHandler := handler.NewOrderHandler(orderUC)
 	metaHandler := handler.NewMetaHandler(metaRepo)
 	businessHandler := handler.NewBusinessHandler(businessUC)
+	syncJobHandler := handler.NewSyncJobHandler(syncJobRepo)
 
-	router := http.NewRouter(authHandler, productHandler, paymentHandler, orderHandler, metaHandler, businessHandler, jwtService)
+	router := http.NewRouter(authHandler, productHandler, paymentHandler, orderHandler, metaHandler, businessHandler, syncJobHandler, jwtService)
 
 
 	// ── Start Server ─────────────────────────────────────────────

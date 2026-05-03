@@ -3,11 +3,11 @@ package dto
 import "time"
 
 type ExtractedOrderRequest struct {
-	ClientName   string  `json:"client_name"`
-	Total        float64 `json:"total"`
-	Status       string  `json:"status"`
-	Date         string  `json:"date"`
-	ItemsSummary string  `json:"items_summary"`
+	ClientName   string   `json:"client_name"`
+	Total        *float64 `json:"total"`
+	Status       string   `json:"status"`
+	Date         string   `json:"date"`
+	ItemsSummary string   `json:"items_summary"`
 }
 
 type BatchCreateOrderRequest struct {
@@ -21,7 +21,7 @@ type OrderResponse struct {
 	ClientName     string    `json:"client_name"`
 	ConversationID string    `json:"conversation_id"`
 	Status         string    `json:"status"`
-	Total          float64   `json:"total"`
+	Total          *float64  `json:"total"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }

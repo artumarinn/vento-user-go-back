@@ -21,12 +21,15 @@ func NewOrderUsecases(repo port.OrderRepository) *OrderUsecases {
 func (uc *OrderUsecases) SyncFromIA(ctx context.Context, userID string, req dto.BatchCreateOrderRequest) error {
 	orders := make([]*entity.Order, len(req.Orders))
 	for i, oReq := range req.Orders {
+		total := 0.0
+		if oReq.Total != nil { total = *oReq.Total }
+		
 		orders[i] = &entity.Order{
 			ID:             uuid.New().String(),
 			UserID:         userID,
 			ClientName:     oReq.ClientName,
-			Total:          oReq.Total,
-			Status:         entity.StatusPaymentReceived, // Default para IA sync
+			Total:          total,
+			Status:         entity.StatusPaymentReceived,
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),
 		}
@@ -48,7 +51,7 @@ func (uc *OrderUsecases) ListOrders(ctx context.Context, userID string) ([]dto.O
 			ClientName:     o.ClientName,
 			ConversationID: o.ConversationID,
 			Status:         string(o.Status),
-			Total:          o.Total,
+			Total:          ptr(o.Total),
 			CreatedAt:      o.CreatedAt,
 			UpdatedAt:      o.UpdatedAt,
 		}

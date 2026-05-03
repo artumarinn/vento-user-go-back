@@ -8,7 +8,7 @@ import (
 )
 
 // NewRouter creates and configures the Gin router with all routes.
-func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, paymentHandler *handler.PaymentHandler, orderHandler *handler.OrderHandler, metaHandler *handler.MetaHandler, businessHandler *handler.BusinessHandler, authService port.AuthService) *gin.Engine {
+func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, paymentHandler *handler.PaymentHandler, orderHandler *handler.OrderHandler, metaHandler *handler.MetaHandler, businessHandler *handler.BusinessHandler, syncJobHandler *handler.SyncJobHandler, authService port.AuthService) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -42,6 +42,11 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 			internal.POST("/products/sync", productHandler.SyncFromIA)
 			internal.POST("/orders/sync", orderHandler.SyncFromIA)
 			internal.POST("/payments/sync", paymentHandler.SyncFromIA)
+			
+			// Sync Jobs
+			internal.POST("/sync-jobs", syncJobHandler.CreateJob)
+			internal.GET("/sync-jobs/:id", syncJobHandler.GetJob)
+			internal.PUT("/sync-jobs/:id/progress", syncJobHandler.UpdateProgress)
 		}
 		authGroup := v1.Group("/auth")
 		{
@@ -85,6 +90,19 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 		payments.Use(middleware.AuthMiddleware(authService))
 		{
 			payments.GET("", paymentHandler.List)
+		}
+
+		orders := v1.Group("/orders")
+		orders.Use(middleware.AuthMiddleware(authService))
+		{
+			orders.GET("", orderHandler.List)
+		}
+
+		metaConfigs := v1.Group("/meta-configs")
+		metaConfigs.Use(middleware.AuthMiddleware(authService))
+		{
+			metaConfigs.POST("", metaHandler.Save)
+			metaConfigs.GET("", metaHandler.ListMine)
 		}
 	}
 

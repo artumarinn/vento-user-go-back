@@ -30,12 +30,16 @@ func (uc *CatalogUsecases) ListProducts(ctx context.Context, userID string) ([]d
 }
 
 func (uc *CatalogUsecases) CreateProduct(ctx context.Context, userID string, req dto.CreateProductRequest) (dto.ProductResponse, error) {
-	p := entity.NewProduct(userID, req.Name, req.SKU, req.Category, req.Price)
-	p.Stock = req.Stock
+	price := 0.0
+	if req.Price != nil { price = *req.Price }
+	
+	p := entity.NewProduct(userID, req.Name, req.SKU, req.Category, price)
+	
+	if req.Stock != nil { p.Stock = *req.Stock }
 	p.StockUnit = req.StockUnit
 	p.MaxStock = req.MaxStock
 	p.Supplier = req.Supplier
-	p.SupplierCost = req.SupplierCost
+	if req.SupplierCost != nil { p.SupplierCost = *req.SupplierCost }
 
 	if err := uc.repo.Save(ctx, p); err != nil {
 		return dto.ProductResponse{}, err
@@ -49,14 +53,17 @@ func (uc *CatalogUsecases) BatchCreateProducts(ctx context.Context, userID strin
 	res := make([]dto.ProductResponse, len(req.Products))
 
 	for i, pReq := range req.Products {
-		p := entity.NewProduct(userID, pReq.Name, pReq.SKU, pReq.Category, pReq.Price)
+		price := 0.0
+		if pReq.Price != nil { price = *pReq.Price }
+		
+		p := entity.NewProduct(userID, pReq.Name, pReq.SKU, pReq.Category, price)
 		if pReq.UserID != "" { p.UserID = pReq.UserID }
 		
-		p.Stock = pReq.Stock
+		if pReq.Stock != nil { p.Stock = *pReq.Stock }
 		p.StockUnit = pReq.StockUnit
 		if pReq.MaxStock != nil { p.MaxStock = pReq.MaxStock }
 		p.Supplier = pReq.Supplier
-		p.SupplierCost = pReq.SupplierCost
+		if pReq.SupplierCost != nil { p.SupplierCost = *pReq.SupplierCost }
 		
 		products[i] = p
 		res[i] = mapEntityToDTO(p)
@@ -75,18 +82,18 @@ func (uc *CatalogUsecases) UpdateProduct(ctx context.Context, userID string, pro
 		return dto.ProductResponse{}, err
 	}
 	if p == nil {
-		return dto.ProductResponse{}, nil // Should probably be an error
+		return dto.ProductResponse{}, nil
 	}
 
 	if req.Name != "" { p.Name = req.Name }
 	if req.SKU != "" { p.SKU = req.SKU }
 	if req.Category != "" { p.Category = req.Category }
-	if req.Stock != 0 { p.Stock = req.Stock }
+	if req.Stock != nil { p.Stock = *req.Stock }
 	if req.StockUnit != "" { p.StockUnit = req.StockUnit }
 	if req.MaxStock != nil { p.MaxStock = req.MaxStock }
-	if req.Price != 0 { p.Price = req.Price }
+	if req.Price != nil { p.Price = *req.Price }
 	if req.Supplier != "" { p.Supplier = req.Supplier }
-	if req.SupplierCost != 0 { p.SupplierCost = req.SupplierCost }
+	if req.SupplierCost != nil { p.SupplierCost = *req.SupplierCost }
 
 	if err := uc.repo.Update(ctx, p); err != nil {
 		return dto.ProductResponse{}, err
@@ -106,12 +113,12 @@ func mapEntityToDTO(p *entity.Product) dto.ProductResponse {
 		Name:         p.Name,
 		SKU:          p.SKU,
 		Category:     p.Category,
-		Stock:        p.Stock,
+		Stock:        ptr(p.Stock),
 		StockUnit:    p.StockUnit,
 		MaxStock:     p.MaxStock,
-		Price:        p.Price,
+		Price:        ptr(p.Price),
 		Supplier:     p.Supplier,
-		SupplierCost: p.SupplierCost,
+		SupplierCost: ptr(p.SupplierCost),
 		CreatedAt:    p.CreatedAt,
 		UpdatedAt:    p.UpdatedAt,
 	}
