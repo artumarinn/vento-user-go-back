@@ -1,8 +1,9 @@
 package main
 
 import (
-	"log"
+	"os"
 
+	"github.com/vento-ai/shared/logger"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/application/usecase"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/infrastructure/adapter/http"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/infrastructure/adapter/http/handler"
@@ -14,11 +15,13 @@ import (
 func main() {
 	// ── Load Config ──────────────────────────────────────────────
 	cfg := config.Load()
+	logger.Init(cfg.Env)
 
 	// ── Infrastructure: Database ─────────────────────────────────
 	db, err := postgres.NewConnection(cfg.DSN())
 	if err != nil {
-		log.Fatalf("❌ Database connection failed: %v", err)
+		logger.L().Error("❌ Database connection failed", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -56,8 +59,9 @@ func main() {
 
 	// ── Start Server ─────────────────────────────────────────────
 	addr := ":" + cfg.ServerPort
-	log.Printf("🚀 Vento Core server running on http://localhost%s", addr)
+	logger.L().Info("🚀 Vento Core server running", "addr", "http://localhost"+addr)
 	if err := router.Run(addr); err != nil {
-		log.Fatalf("❌ Server failed: %v", err)
+		logger.L().Error("❌ Server failed", "error", err)
+		os.Exit(1)
 	}
 }

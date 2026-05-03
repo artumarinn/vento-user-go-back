@@ -1,7 +1,12 @@
 package http
 
 import (
+	"fmt"
+	"io"
+	"time"
+
 	"github.com/gin-gonic/gin"
+	"github.com/vento-ai/shared/logger"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/application/port"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/infrastructure/adapter/http/handler"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/infrastructure/adapter/http/middleware"
@@ -11,7 +16,53 @@ import (
 func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, paymentHandler *handler.PaymentHandler, orderHandler *handler.OrderHandler, metaHandler *handler.MetaHandler, businessHandler *handler.BusinessHandler, syncJobHandler *handler.SyncJobHandler, authService port.AuthService) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
+
+	// Use custom slog-based logger
+	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{
+		Formatter: func(param gin.LogFormatterParams) string {
+			if param.Path == "/health" {
+				return ""
+			}
+			return fmt.Sprintf("[GIN] %s | %d | %s | %s | %s %s | %s\n",
+				param.TimeStamp.Format(time.RFC3339),
+				param.StatusCode,
+				param.Latency,
+				param.ClientIP,
+				param.Method,
+				param.Path,
+				param.ErrorMessage,
+			)
+		},
+		Output: io.Discard, // We log via slog instead
+	}))
+
+	// Log via slog for better integration
+	r.Use(func(c *gin.Context) {
+		start := time.Now()
+		path := c.Request.URL.Path
+		query := c.Request.URL.RawQuery
+
+		c.Next()
+
+		if path == "/health" {
+			return
+		}
+
+		end := time.Now()
+		latency := end.Sub(start)
+
+		logger.L().Info("http request",
+			"status", c.Writer.Status(),
+			"method", c.Request.Method,
+			"path", path,
+			"query", query,
+			"ip", c.ClientIP(),
+			"latency", latency,
+			"user_agent", c.Request.UserAgent(),
+		)
+	})
+
+	r.Use(gin.Recovery())
 
 	// CORS middleware
 	r.Use(func(c *gin.Context) {

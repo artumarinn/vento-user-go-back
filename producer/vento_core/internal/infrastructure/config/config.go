@@ -15,6 +15,7 @@ type Config struct {
 	DBName     string
 	DBSSLMode  string
 	JWTSecret  string
+	Env        string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -28,6 +29,7 @@ func Load() *Config {
 		DBName:     getEnv("DB_NAME", "vento_db"),
 		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
 		JWTSecret:  getEnv("JWT_SECRET", "vento-dev-secret-change-in-production"),
+		Env:        getEnv("ENV", "development"),
 	}
 }
 
