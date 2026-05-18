@@ -96,9 +96,9 @@ func (r *PostgresOrderRepository) GetByID(ctx context.Context, id string) (*enti
 	}, nil
 }
 
-func (r *PostgresOrderRepository) UpdateStatus(ctx context.Context, id string, status entity.OrderStatus) error {
-	query := `UPDATE orders SET status = $1, updated_at = $2 WHERE id = $3`
-	_, err := r.db.ExecContext(ctx, query, string(status), time.Now(), id)
+func (r *PostgresOrderRepository) UpdateStatus(ctx context.Context, id string, userID string, status entity.OrderStatus) error {
+	query := `UPDATE orders SET status = $1, updated_at = $2 WHERE id = $3 AND user_id = $4`
+	_, err := r.db.ExecContext(ctx, query, string(status), time.Now(), id, userID)
 	return err
 }
 

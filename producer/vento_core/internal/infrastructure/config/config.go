@@ -2,34 +2,43 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
+
+	"github.com/joho/godotenv"
 )
 
 // Config holds all configuration for the application.
 type Config struct {
-	ServerPort string
-	DBHost     string
-	DBPort     string
-	DBUser     string
-	DBPassword string
-	DBName     string
-	DBSSLMode  string
-	JWTSecret  string
-	Env        string
+	ServerPort        string
+	DBHost            string
+	DBPort            string
+	DBUser            string
+	DBPassword        string
+	DBName            string
+	DBSSLMode         string
+	JWTSecret         string
+	Env               string
+	CoreInternalToken string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using defaults and system environment variables")
+	}
+
 	return &Config{
-		ServerPort: getEnv("SERVER_PORT", "8082"),
-		DBHost:     getEnv("DB_HOST", "localhost"),
-		DBPort:     getEnv("DB_PORT", "5433"),
-		DBUser:     getEnv("DB_USER", "vento"),
-		DBPassword: getEnv("DB_PASSWORD", "vento_secret"),
-		DBName:     getEnv("DB_NAME", "vento_db"),
-		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
-		JWTSecret:  getEnv("JWT_SECRET", "vento-dev-secret-change-in-production"),
-		Env:        getEnv("ENV", "development"),
+		ServerPort:        getEnv("SERVER_PORT", "8082"),
+		DBHost:            getEnv("DB_HOST", "localhost"),
+		DBPort:            getEnv("DB_PORT", "5433"),
+		DBUser:            getEnv("DB_USER", "vento"),
+		DBPassword:        getEnv("DB_PASSWORD", "vento_secret"),
+		DBName:            getEnv("DB_NAME", "vento_db"),
+		DBSSLMode:         getEnv("DB_SSLMODE", "disable"),
+		JWTSecret:         getEnv("JWT_SECRET", "vento-dev-secret-change-in-production"),
+		Env:               getEnv("ENV", "development"),
+		CoreInternalToken: getEnv("CORE_INTERNAL_TOKEN", ""),
 	}
 }
 

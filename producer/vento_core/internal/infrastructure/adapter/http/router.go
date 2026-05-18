@@ -13,7 +13,7 @@ import (
 )
 
 // NewRouter creates and configures the Gin router with all routes.
-func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, paymentHandler *handler.PaymentHandler, orderHandler *handler.OrderHandler, metaHandler *handler.MetaHandler, businessHandler *handler.BusinessHandler, syncJobHandler *handler.SyncJobHandler, authService port.AuthService) *gin.Engine {
+func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, paymentHandler *handler.PaymentHandler, orderHandler *handler.OrderHandler, metaHandler *handler.MetaHandler, businessHandler *handler.BusinessHandler, syncJobHandler *handler.SyncJobHandler, authService port.AuthService, internalToken string) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
@@ -84,10 +84,11 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 	// API v1
 	v1 := r.Group("/api/v1")
 	{
-		// Internal routes (No Auth required for now, or use a shared secret)
 		internal := v1.Group("/internal")
+		internal.Use(middleware.InternalTokenMiddleware(internalToken))
 		{
 			internal.GET("/meta-config/:platformID", metaHandler.GetByPlatformID)
+			internal.GET("/meta-config-by-user/:userID", metaHandler.GetByUserAndChannel)
 			internal.GET("/business-profile/:userID", businessHandler.GetProfileInternal)
 			internal.GET("/products/:userID", productHandler.ListInternal)
 			internal.POST("/products/sync", productHandler.SyncFromIA)
@@ -103,6 +104,8 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 		{
 			authGroup.POST("/register", authHandler.Register)
 			authGroup.POST("/login", authHandler.Login)
+			authGroup.POST("/forgot-password", authHandler.ForgotPassword)
+			authGroup.POST("/reset-password", authHandler.ResetPassword)
 			authGroup.GET("/me", middleware.AuthMiddleware(authService), authHandler.Me)
 		}
 

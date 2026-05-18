@@ -1,12 +1,12 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/vento-ai/shared/logger"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/application/port"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/domain/entity"
 )
@@ -42,7 +42,7 @@ func (h *SyncJobHandler) CreateJob(c *gin.Context) {
 	}
 
 	if err := h.repo.Create(c.Request.Context(), job); err != nil {
-		log.Printf("[ERROR] Failed to create sync job: %v", err)
+		logger.L().Error("Failed to create sync job", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create job"})
 		return
 	}
@@ -66,7 +66,7 @@ func (h *SyncJobHandler) UpdateProgress(c *gin.Context) {
 	}
 
 	if err := h.repo.UpdateProgress(c.Request.Context(), jobID, req.Progress, req.Status, req.ErrorMsg); err != nil {
-		log.Printf("[ERROR] Failed to update sync job %s: %v", jobID, err)
+		logger.L().Error("Failed to update sync job", "job_id", jobID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update job"})
 		return
 	}

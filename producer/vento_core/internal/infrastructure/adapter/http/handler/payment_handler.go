@@ -1,9 +1,10 @@
 package handler
 
 import (
-	"log"
 	"net/http"
+
 	"github.com/gin-gonic/gin"
+	"github.com/vento-ai/shared/logger"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/application/dto"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/application/usecase"
 )
@@ -27,7 +28,7 @@ func (h *PaymentHandler) List(c *gin.Context) {
 }
 
 func (h *PaymentHandler) SyncFromIA(c *gin.Context) {
-	log.Printf("[DEBUG] Core: Received Payment/Expense Sync request")
+	logger.L().Debug("Core: Received Payment/Expense Sync request")
 	var req dto.BatchCreatePaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

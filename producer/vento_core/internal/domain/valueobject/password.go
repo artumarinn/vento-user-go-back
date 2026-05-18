@@ -57,3 +57,16 @@ func (p Password) Verify(plain string) bool {
 func (p Password) Hash() string {
 	return p.hash
 }
+
+// Update replaces the password with a new one after validation and hashing.
+func (p *Password) Update(plain string) error {
+	if !isPasswordStrong(plain) {
+		return domain.ErrWeakPassword
+	}
+	hashed, err := bcrypt.GenerateFromPassword([]byte(plain), bcryptCost)
+	if err != nil {
+		return err
+	}
+	p.hash = string(hashed)
+	return nil
+}

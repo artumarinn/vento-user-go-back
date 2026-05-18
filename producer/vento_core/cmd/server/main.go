@@ -40,13 +40,14 @@ func main() {
 	// ── Application: Use Cases ───────────────────────────────────
 	registerUC := usecase.NewRegisterUser(userRepo, jwtService)
 	loginUC := usecase.NewLoginUser(userRepo, jwtService)
+	resetPasswordUC := usecase.NewResetPasswordUsecases(userRepo)
 	catalogUC := usecase.NewCatalogUsecases(productRepo)
 	paymentUC := usecase.NewPaymentUsecases(paymentRepo)
 	orderUC := usecase.NewOrderUsecases(orderRepo)
 	businessUC := usecase.NewBusinessProfileUsecases(businessRepo)
 
 	// ── Infrastructure: HTTP ─────────────────────────────────────
-	authHandler := handler.NewAuthHandler(registerUC, loginUC, userRepo)
+	authHandler := handler.NewAuthHandler(registerUC, loginUC, resetPasswordUC, userRepo)
 	productHandler := handler.NewProductHandler(catalogUC)
 	paymentHandler := handler.NewPaymentHandler(paymentUC)
 	orderHandler := handler.NewOrderHandler(orderUC)
@@ -54,7 +55,7 @@ func main() {
 	businessHandler := handler.NewBusinessHandler(businessUC)
 	syncJobHandler := handler.NewSyncJobHandler(syncJobRepo)
 
-	router := http.NewRouter(authHandler, productHandler, paymentHandler, orderHandler, metaHandler, businessHandler, syncJobHandler, jwtService)
+	router := http.NewRouter(authHandler, productHandler, paymentHandler, orderHandler, metaHandler, businessHandler, syncJobHandler, jwtService, cfg.CoreInternalToken)
 
 
 	// ── Start Server ─────────────────────────────────────────────

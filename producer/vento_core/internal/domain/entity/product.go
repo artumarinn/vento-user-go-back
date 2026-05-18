@@ -19,6 +19,8 @@ type Product struct {
 	Price        float64   `json:"price"`
 	Supplier     string    `json:"supplier"`
 	SupplierCost float64   `json:"supplier_cost"`
+	Description  string    `json:"description"`
+	Tags         string    `json:"tags"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }

@@ -16,35 +16,49 @@ func NewBusinessRepo(db *sqlx.DB) *BusinessRepo {
 }
 
 func (r *BusinessRepo) Save(ctx context.Context, profile *entity.BusinessProfile) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if profile.BusinessName != "" {
+		_, err = tx.ExecContext(ctx, `UPDATE users SET business_name = $1 WHERE id = $2`, profile.BusinessName, profile.UserID)
+		if err != nil {
+			return err
+		}
+	}
+
 	query := `
-		INSERT INTO business_profiles (user_id, description, industry, tone, currency, updated_at)
-		VALUES ($1, $2, $3, $4, $5, NOW())
+		INSERT INTO business_profiles (user_id, business_name, description, industry, tone, currency, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
 		ON CONFLICT (user_id) DO UPDATE SET
-			description = EXCLUDED.description,
-			industry = EXCLUDED.industry,
-			tone = EXCLUDED.tone,
-			currency = EXCLUDED.currency,
-			updated_at = NOW()
+			business_name = EXCLUDED.business_name,
+			description   = EXCLUDED.description,
+			industry      = EXCLUDED.industry,
+			tone          = EXCLUDED.tone,
+			currency      = EXCLUDED.currency,
+			updated_at    = NOW()
 		RETURNING id, created_at, updated_at
 	`
-	// Primero verificamos si necesitamos el ON CONFLICT (user_id). 
-	// Para eso, user_id debe ser UNIQUE en la tabla. 
-	// Vamos a asegurar eso en el SQL después.
-	
-	err := r.db.QueryRowContext(ctx, query,
+	err = tx.QueryRowContext(ctx, query,
 		profile.UserID,
+		profile.BusinessName,
 		profile.Description,
 		profile.Industry,
 		profile.Tone,
 		profile.Currency,
 	).Scan(&profile.ID, &profile.CreatedAt, &profile.UpdatedAt)
+	if err != nil {
+		return err
+	}
 
-	return err
+	return tx.Commit()
 }
 
 func (r *BusinessRepo) GetByUserID(ctx context.Context, userID string) (*entity.BusinessProfile, error) {
 	var profile entity.BusinessProfile
-	query := `SELECT id, user_id, description, industry, tone, currency, created_at, updated_at FROM business_profiles WHERE user_id = $1`
+	query := `SELECT id, user_id, business_name, description, industry, tone, currency, created_at, updated_at FROM business_profiles WHERE user_id = $1`
 	err := r.db.GetContext(ctx, &profile, query, userID)
 	if err == sql.ErrNoRows {
 		return nil, nil

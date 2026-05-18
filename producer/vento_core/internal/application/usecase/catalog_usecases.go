@@ -57,14 +57,15 @@ func (uc *CatalogUsecases) BatchCreateProducts(ctx context.Context, userID strin
 		if pReq.Price != nil { price = *pReq.Price }
 		
 		p := entity.NewProduct(userID, pReq.Name, pReq.SKU, pReq.Category, price)
-		if pReq.UserID != "" { p.UserID = pReq.UserID }
 		
 		if pReq.Stock != nil { p.Stock = *pReq.Stock }
 		p.StockUnit = pReq.StockUnit
 		if pReq.MaxStock != nil { p.MaxStock = pReq.MaxStock }
 		p.Supplier = pReq.Supplier
 		if pReq.SupplierCost != nil { p.SupplierCost = *pReq.SupplierCost }
-		
+		p.Description = pReq.Description
+		p.Tags = pReq.Tags
+
 		products[i] = p
 		res[i] = mapEntityToDTO(p)
 	}
@@ -94,6 +95,8 @@ func (uc *CatalogUsecases) UpdateProduct(ctx context.Context, userID string, pro
 	if req.Price != nil { p.Price = *req.Price }
 	if req.Supplier != "" { p.Supplier = req.Supplier }
 	if req.SupplierCost != nil { p.SupplierCost = *req.SupplierCost }
+	if req.Description != "" { p.Description = req.Description }
+	if req.Tags != "" { p.Tags = req.Tags }
 
 	if err := uc.repo.Update(ctx, p); err != nil {
 		return dto.ProductResponse{}, err
@@ -119,6 +122,8 @@ func mapEntityToDTO(p *entity.Product) dto.ProductResponse {
 		Price:        ptr(p.Price),
 		Supplier:     p.Supplier,
 		SupplierCost: ptr(p.SupplierCost),
+		Description:  p.Description,
+		Tags:         p.Tags,
 		CreatedAt:    p.CreatedAt,
 		UpdatedAt:    p.UpdatedAt,
 	}

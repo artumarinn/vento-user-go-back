@@ -24,6 +24,15 @@ type UserResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding: "required,email"`
+}
+
+type ResetPasswordRequest struct {
+	Token    string `json:"token" binding: "required"`
+	Password string `json:"password" binding: "required,min=8"`
+}
+
 // AuthResponse is the output DTO for auth endpoints (register/login).
 type AuthResponse struct {
 	Token string       `json:"token"`

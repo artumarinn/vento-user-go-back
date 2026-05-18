@@ -95,3 +95,40 @@ func (r *PostgresUserRepository) FindByGoogleID(ctx context.Context, googleID st
 	}
 	return entity.ReconstructUser(row.ID, row.Email, row.Password, row.FullName, row.BusinessName, row.GoogleID.String, row.CreatedAt, row.UpdatedAt), nil
 }
+
+func (r *PostgresUserRepository) UpdatePassword(ctx context.Context, email, hashedPassword string) error {
+	query := `UPDATE users SET password = $1, updated_at = NOW() WHERE email = $2`
+	_, err := r.db.ExecContext(ctx, query, hashedPassword, email)
+	return err
+}
+
+func (r *PostgresUserRepository) SaveResetToken(ctx context.Context, email, token string, expiresAt time.Time) error {
+	query := `
+		INSERT INTO password_resets (email, token, expires_at)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (email, token) DO UPDATE SET
+			expires_at = EXCLUDED.expires_at,
+			created_at = NOW()
+	`
+	_, err := r.db.ExecContext(ctx, query, email, token, expiresAt)
+	return err
+}
+
+func (r *PostgresUserRepository) GetEmailByResetToken(ctx context.Context, token string) (string, error) {
+	var email string
+	query := `SELECT email FROM password_resets WHERE token = $1 AND expires_at > NOW()`
+	err := r.db.GetContext(ctx, &email, query, token)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", errors.New("invalid or expired token")
+		}
+		return "", err
+	}
+	return email, nil
+}
+
+func (r *PostgresUserRepository) DeleteResetToken(ctx context.Context, token string) error {
+	query := `DELETE FROM password_resets WHERE token = $1`
+	_, err := r.db.ExecContext(ctx, query, token)
+	return err
+}

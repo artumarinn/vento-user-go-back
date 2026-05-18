@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/vento-ai/shared/logger"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/application/dto"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/application/usecase"
 )
@@ -28,10 +28,10 @@ func (h *OrderHandler) List(c *gin.Context) {
 }
 
 func (h *OrderHandler) SyncFromIA(c *gin.Context) {
-	log.Printf("[DEBUG] Core: Received Order Sync request")
+	logger.L().Debug("Core: Received Order Sync request")
 	var req dto.BatchCreateOrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Printf("[ERROR] Core: Failed to bind JSON: %v", err)
+		logger.L().Error("Core: Failed to bind JSON", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -49,8 +49,8 @@ func (h *OrderHandler) SyncFromIA(c *gin.Context) {
 
 	err := h.orderUC.SyncFromIA(c.Request.Context(), userID, req)
 	if err != nil {
-		log.Printf("[ERROR] Core: Order Sync failed: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logger.L().Error("Core: Order Sync failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
 	}
 

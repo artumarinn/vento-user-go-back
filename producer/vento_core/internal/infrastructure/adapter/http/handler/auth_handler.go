@@ -13,18 +13,52 @@ import (
 
 // AuthHandler exposes HTTP endpoints for authentication.
 type AuthHandler struct {
-	registerUC *usecase.RegisterUser
-	loginUC    *usecase.LoginUser
-	userRepo   port.UserRepository
+	registerUC      *usecase.RegisterUser
+	loginUC         *usecase.LoginUser
+	resetPasswordUC *usecase.ResetPasswordUsecases
+	userRepo        port.UserRepository
 }
 
 // NewAuthHandler creates a new AuthHandler with the required use cases.
-func NewAuthHandler(register *usecase.RegisterUser, login *usecase.LoginUser, userRepo port.UserRepository) *AuthHandler {
+func NewAuthHandler(register *usecase.RegisterUser, login *usecase.LoginUser, resetPassword *usecase.ResetPasswordUsecases, userRepo port.UserRepository) *AuthHandler {
 	return &AuthHandler{
-		registerUC: register,
-		loginUC:    login,
-		userRepo:   userRepo,
+		registerUC:      register,
+		loginUC:         login,
+		resetPasswordUC: resetPassword,
+		userRepo:        userRepo,
 	}
+}
+
+// ForgotPassword handles POST /api/v1/auth/forgot-password
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req dto.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid email"})
+		return
+	}
+
+	if err := h.resetPasswordUC.ForgotPassword(c.Request.Context(), req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process request"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "If the email exists, a reset link has been generated and logged."})
+}
+
+// ResetPassword handles POST /api/v1/auth/reset-password
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req dto.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	if err := h.resetPasswordUC.ResetPassword(c.Request.Context(), req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
 
 // Register handles POST /api/v1/auth/register

@@ -11,19 +11,22 @@ import (
 )
 
 type productRow struct {
-	ID           string    `db:"id"`
-	UserID       string    `db:"user_id"`
-	Name         string    `db:"name"`
-	SKU          string    `db:"sku"`
-	Category     string    `db:"category"`
-	Stock        float64   `db:"stock"`
-	StockUnit    string    `db:"stock_unit"`
-	MaxStock     *float64  `db:"max_stock"`
-	Price        float64   `db:"price"`
-	Supplier     string    `db:"supplier"`
-	SupplierCost float64   `db:"supplier_cost"`
-	CreatedAt    time.Time `db:"created_at"`
-	UpdatedAt    time.Time `db:"updated_at"`
+	ID           string      `db:"id"`
+	UserID       string      `db:"user_id"`
+	Name         string      `db:"name"`
+	SKU          string      `db:"sku"`
+	Category     string      `db:"category"`
+	Stock        float64     `db:"stock"`
+	StockUnit    string      `db:"stock_unit"`
+	MaxStock     *float64    `db:"max_stock"`
+	Price        float64     `db:"price"`
+	Supplier     string      `db:"supplier"`
+	SupplierCost float64     `db:"supplier_cost"`
+	Metadata     interface{} `db:"metadata"`
+	Description  string      `db:"description"`
+	Tags         string      `db:"tags"`
+	CreatedAt    time.Time   `db:"created_at"`
+	UpdatedAt    time.Time   `db:"updated_at"`
 }
 
 type PostgresProductRepository struct {
@@ -36,18 +39,21 @@ func NewPostgresProductRepository(db *sqlx.DB) *PostgresProductRepository {
 
 func (r *PostgresProductRepository) Save(ctx context.Context, p *entity.Product) error {
 	query := `
-		INSERT INTO products (id, user_id, name, sku, category, stock, stock_unit, max_stock, price, supplier, supplier_cost, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		INSERT INTO products (id, user_id, name, sku, category, stock, stock_unit, max_stock, price, supplier, supplier_cost, description, tags, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		ON CONFLICT (user_id, name) DO UPDATE SET
-			sku = EXCLUDED.sku,
-			category = EXCLUDED.category,
-			stock = EXCLUDED.stock,
-			price = EXCLUDED.price,
-			supplier = EXCLUDED.supplier,
-			updated_at = EXCLUDED.updated_at
+			sku         = EXCLUDED.sku,
+			category    = EXCLUDED.category,
+			stock       = EXCLUDED.stock,
+			price       = EXCLUDED.price,
+			supplier    = EXCLUDED.supplier,
+			description = CASE WHEN EXCLUDED.description != '' THEN EXCLUDED.description ELSE products.description END,
+			tags        = CASE WHEN EXCLUDED.tags != '' THEN EXCLUDED.tags ELSE products.tags END,
+			updated_at  = EXCLUDED.updated_at
 	`
 	_, err := r.db.ExecContext(ctx, query,
-		p.ID, p.UserID, p.Name, p.SKU, p.Category, p.Stock, p.StockUnit, p.MaxStock, p.Price, p.Supplier, p.SupplierCost, p.CreatedAt, p.UpdatedAt,
+		p.ID, p.UserID, p.Name, p.SKU, p.Category, p.Stock, p.StockUnit, p.MaxStock,
+		p.Price, p.Supplier, p.SupplierCost, p.Description, p.Tags, p.CreatedAt, p.UpdatedAt,
 	)
 	return err
 }
@@ -55,28 +61,32 @@ func (r *PostgresProductRepository) Save(ctx context.Context, p *entity.Product)
 func (r *PostgresProductRepository) Update(ctx context.Context, p *entity.Product) error {
 	query := `
 		UPDATE products
-		SET name = $1, sku = $2, category = $3, stock = $4, stock_unit = $5, max_stock = $6, price = $7, supplier = $8, supplier_cost = $9, updated_at = $10
-		WHERE id = $11 AND user_id = $12
+		SET name = $1, sku = $2, category = $3, stock = $4, stock_unit = $5, max_stock = $6,
+		    price = $7, supplier = $8, supplier_cost = $9,
+		    description = CASE WHEN $10 != '' THEN $10 ELSE description END,
+		    tags = CASE WHEN $11 != '' THEN $11 ELSE tags END,
+		    updated_at = $12
+		WHERE id = $13 AND user_id = $14
 	`
 	_, err := r.db.ExecContext(ctx, query,
-		p.Name, p.SKU, p.Category, p.Stock, p.StockUnit, p.MaxStock, p.Price, p.Supplier, p.SupplierCost, time.Now().UTC(), p.ID, p.UserID,
+		p.Name, p.SKU, p.Category, p.Stock, p.StockUnit, p.MaxStock,
+		p.Price, p.Supplier, p.SupplierCost, p.Description, p.Tags,
+		time.Now().UTC(), p.ID, p.UserID,
 	)
 	return err
 }
 
 func (r *PostgresProductRepository) Delete(ctx context.Context, id string, userID string) error {
-	query := `DELETE FROM products WHERE id = $1 AND user_id = $2`
-	_, err := r.db.ExecContext(ctx, query, id, userID)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM products WHERE id = $1 AND user_id = $2`, id, userID)
 	return err
 }
 
 func (r *PostgresProductRepository) GetByID(ctx context.Context, id string, userID string) (*entity.Product, error) {
 	var row productRow
-	query := `SELECT * FROM products WHERE id = $1 AND user_id = $2`
-	err := r.db.GetContext(ctx, &row, query, id, userID)
+	err := r.db.GetContext(ctx, &row, `SELECT * FROM products WHERE id = $1 AND user_id = $2`, id, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil // Or a specific ErrProductNotFound
+			return nil, nil
 		}
 		return nil, err
 	}
@@ -85,12 +95,10 @@ func (r *PostgresProductRepository) GetByID(ctx context.Context, id string, user
 
 func (r *PostgresProductRepository) ListByUserID(ctx context.Context, userID string) ([]*entity.Product, error) {
 	var rows []productRow
-	query := `SELECT * FROM products WHERE user_id = $1 ORDER BY created_at DESC`
-	err := r.db.SelectContext(ctx, &rows, query, userID)
+	err := r.db.SelectContext(ctx, &rows, `SELECT * FROM products WHERE user_id = $1 ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
-
 	products := make([]*entity.Product, len(rows))
 	for i, row := range rows {
 		products[i] = mapRowToEntity(row)
@@ -106,20 +114,23 @@ func (r *PostgresProductRepository) SaveBatch(ctx context.Context, products []*e
 	defer tx.Rollback()
 
 	query := `
-		INSERT INTO products (id, user_id, name, sku, category, stock, stock_unit, max_stock, price, supplier, supplier_cost, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		INSERT INTO products (id, user_id, name, sku, category, stock, stock_unit, max_stock, price, supplier, supplier_cost, description, tags, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		ON CONFLICT (user_id, name) DO UPDATE SET
-			sku = EXCLUDED.sku,
-			category = EXCLUDED.category,
-			stock = EXCLUDED.stock,
-			price = EXCLUDED.price,
-			supplier = EXCLUDED.supplier,
-			updated_at = EXCLUDED.updated_at
+			sku         = EXCLUDED.sku,
+			category    = EXCLUDED.category,
+			stock       = EXCLUDED.stock,
+			price       = EXCLUDED.price,
+			supplier    = EXCLUDED.supplier,
+			description = CASE WHEN EXCLUDED.description != '' THEN EXCLUDED.description ELSE products.description END,
+			tags        = CASE WHEN EXCLUDED.tags != '' THEN EXCLUDED.tags ELSE products.tags END,
+			updated_at  = EXCLUDED.updated_at
 	`
 
 	for _, p := range products {
 		_, err := tx.ExecContext(ctx, query,
-			p.ID, p.UserID, p.Name, p.SKU, p.Category, p.Stock, p.StockUnit, p.MaxStock, p.Price, p.Supplier, p.SupplierCost, p.CreatedAt, p.UpdatedAt,
+			p.ID, p.UserID, p.Name, p.SKU, p.Category, p.Stock, p.StockUnit, p.MaxStock,
+			p.Price, p.Supplier, p.SupplierCost, p.Description, p.Tags, p.CreatedAt, p.UpdatedAt,
 		)
 		if err != nil {
 			return err
@@ -142,6 +153,8 @@ func mapRowToEntity(row productRow) *entity.Product {
 		Price:        row.Price,
 		Supplier:     row.Supplier,
 		SupplierCost: row.SupplierCost,
+		Description:  row.Description,
+		Tags:         row.Tags,
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
 	}

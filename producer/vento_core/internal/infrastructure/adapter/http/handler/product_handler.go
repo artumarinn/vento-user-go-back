@@ -102,7 +102,12 @@ func (h *ProductHandler) SyncFromIA(c *gin.Context) {
 		return
 	}
 
-	userID := req.Products[0].UserID 
+	tenantID, ok := c.Get("tenantUserID")
+	userID, _ := tenantID.(string)
+	if !ok || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing tenant context"})
+		return
+	}
 	logger.L().Debug("Core: Syncing products from IA", "userID", userID, "count", len(req.Products))
 
 	products, err := h.catalogUC.BatchCreateProducts(c.Request.Context(), userID, req)

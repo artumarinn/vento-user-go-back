@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/application/usecase"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/domain/entity"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/infrastructure/adapter/http/handler"
@@ -64,19 +65,63 @@ func TestProductHandler_SyncFromIA(t *testing.T) {
 		uc := usecase.NewCatalogUsecases(repo)
 		h := handler.NewProductHandler(uc)
 		r, v1 := setupTestRouter()
-		v1.POST("/internal/products/sync", h.SyncFromIA)
+		// Inject tenantUserID the same way the internal token middleware does
+		v1.POST("/internal/products/sync", func(c *gin.Context) {
+			c.Set("tenantUserID", "user-123")
+			h.SyncFromIA(c)
+		})
 
 		body := gin.H{
 			"products": []gin.H{
-				{
-					"user_id": "user-123",
-					"name":    "Sync Product",
-					"price":   2000,
-				},
+				{"user_id": "user-123", "name": "Sync Product", "price": 2000},
 			},
+		}
+		w := performRequest(r, "POST", "/api/v1/internal/products/sync", body)
+		assert.Equal(t, http.StatusCreated, w.Code)
+	})
+
+	t.Run("AcceptsDescriptionAndTags", func(t *testing.T) {
+		var savedProducts []*entity.Product
+		repo := &fakeProductRepo{
+			saveBatchFunc: func(_ context.Context, products []*entity.Product) error {
+				savedProducts = products
+				return nil
+			},
+		}
+		uc := usecase.NewCatalogUsecases(repo)
+		h := handler.NewProductHandler(uc)
+		r, v1 := setupTestRouter()
+		v1.POST("/internal/products/sync", func(c *gin.Context) {
+			c.Set("tenantUserID", "user-123")
+			h.SyncFromIA(c)
+		})
+
+		body := gin.H{
+			"products": []gin.H{{
+				"user_id":     "user-123",
+				"name":        "PLA Blanco",
+				"price":       5500,
+				"description": "Ideal para principiantes.",
+				"tags":        "pla,blanco,1kg",
+			}},
 		}
 		w := performRequest(r, "POST", "/api/v1/internal/products/sync", body)
 
 		assert.Equal(t, http.StatusCreated, w.Code)
+		require.Len(t, savedProducts, 1)
+		assert.Equal(t, "Ideal para principiantes.", savedProducts[0].Description)
+		assert.Equal(t, "pla,blanco,1kg", savedProducts[0].Tags)
+	})
+
+	t.Run("EmptyProductsListReturns200", func(t *testing.T) {
+		h := handler.NewProductHandler(usecase.NewCatalogUsecases(&fakeProductRepo{}))
+		r, v1 := setupTestRouter()
+		v1.POST("/internal/products/sync", func(c *gin.Context) {
+			c.Set("tenantUserID", "user-123")
+			h.SyncFromIA(c)
+		})
+
+		w := performRequest(r, "POST", "/api/v1/internal/products/sync", gin.H{"products": []gin.H{}})
+		assert.Equal(t, http.StatusOK, w.Code)
 	})
 }

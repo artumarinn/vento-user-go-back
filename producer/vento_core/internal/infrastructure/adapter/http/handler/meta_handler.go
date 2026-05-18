@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/vento-ai/shared/logger"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/application/port"
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/domain/entity"
 )
@@ -110,7 +110,7 @@ func (h *MetaHandler) Save(c *gin.Context) {
 	}
 
 	if err := h.metaRepo.Save(c.Request.Context(), config); err != nil {
-		log.Printf("[META] Save failed for user %s: %v", userID, err)
+		logger.L().Error("META: Save failed", "user_id", userID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save meta config"})
 		return
 	}
@@ -134,7 +134,7 @@ func (h *MetaHandler) ListMine(c *gin.Context) {
 
 	configs, err := h.metaRepo.GetAllByUserID(c.Request.Context(), userID)
 	if err != nil {
-		log.Printf("[META] ListMine failed for user %s: %v", userID, err)
+		logger.L().Error("META: ListMine failed", "user_id", userID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list meta configs"})
 		return
 	}
@@ -157,7 +157,7 @@ func (h *MetaHandler) GetByPlatformID(c *gin.Context) {
 
 	config, err := h.metaRepo.GetByPlatformID(c.Request.Context(), platformID)
 	if err != nil {
-		log.Printf("Error fetching meta config for %s: %v", platformID, err)
+		logger.L().Error("META: GetByPlatformID failed", "platform_id", platformID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch meta config"})
 		return
 	}
@@ -167,5 +167,48 @@ func (h *MetaHandler) GetByPlatformID(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, config)
+	c.JSON(http.StatusOK, metaConfigResponse{
+		ID:                   config.ID,
+		UserID:               config.UserID,
+		PlatformID:           config.PlatformID,
+		Channel:              config.Channel,
+		WhatsAppBusinessID:   config.WhatsAppBusinessID,
+		PermanentAccessToken: config.PermanentAccessToken,
+		VerifyToken:          config.VerifyToken,
+		AppSecret:            config.AppSecret,
+		CreatedAt:            config.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:            config.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	})
+}
+
+// GET /api/v1/internal/meta-config-by-user/:userID/:channel
+func (h *MetaHandler) GetByUserAndChannel(c *gin.Context) {
+	userID := c.Param("userID")
+	if userID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "userID is required"})
+		return
+	}
+
+	config, err := h.metaRepo.GetByUserID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch meta config"})
+		return
+	}
+	if config == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "meta config not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, metaConfigResponse{
+		ID:                   config.ID,
+		UserID:               config.UserID,
+		PlatformID:           config.PlatformID,
+		Channel:              config.Channel,
+		WhatsAppBusinessID:   config.WhatsAppBusinessID,
+		PermanentAccessToken: config.PermanentAccessToken,
+		VerifyToken:          config.VerifyToken,
+		AppSecret:            config.AppSecret,
+		CreatedAt:            config.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:            config.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	})
 }

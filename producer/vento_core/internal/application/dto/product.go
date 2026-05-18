@@ -4,9 +4,9 @@ import "time"
 
 // CreateProductRequest is the input DTO for creating a new product.
 type CreateProductRequest struct {
-	UserID       string   `json:"user_id"` // Internal use for sync
+	UserID       string   `json:"user_id"`
 	Name         string   `json:"name" binding:"required"`
-	SKU          string   `json:"sku"` // No longer required for AI extraction
+	SKU          string   `json:"sku"`
 	Category     string   `json:"category"`
 	Stock        *float64 `json:"stock"`
 	StockUnit    string   `json:"stock_unit"`
@@ -14,6 +14,8 @@ type CreateProductRequest struct {
 	Price        *float64 `json:"price"`
 	Supplier     string   `json:"supplier"`
 	SupplierCost *float64 `json:"supplier_cost"`
+	Description  string   `json:"description"`
+	Tags         string   `json:"tags"`
 }
 
 // BatchCreateProductRequest is the input DTO for batch creation.
@@ -32,6 +34,8 @@ type UpdateProductRequest struct {
 	Price        *float64 `json:"price"`
 	Supplier     string   `json:"supplier"`
 	SupplierCost *float64 `json:"supplier_cost"`
+	Description  string   `json:"description"`
+	Tags         string   `json:"tags"`
 }
 
 // ProductResponse is the output DTO for product information.
@@ -47,6 +51,8 @@ type ProductResponse struct {
 	Price        *float64  `json:"price"`
 	Supplier     string    `json:"supplier"`
 	SupplierCost *float64  `json:"supplier_cost"`
+	Description  string    `json:"description"`
+	Tags         string    `json:"tags"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
