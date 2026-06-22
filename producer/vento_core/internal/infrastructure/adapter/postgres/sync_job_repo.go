@@ -60,3 +60,47 @@ func (r *PostgresSyncJobRepository) UpdateProgress(ctx context.Context, id strin
 	_, err := r.db.ExecContext(ctx, query, progress, status, errorMsg, id)
 	return err
 }
+
+func (r *PostgresSyncJobRepository) GetNextQueuedJob(ctx context.Context) (*entity.SyncJob, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var job entity.SyncJob
+	selectQuery := `
+		SELECT id, user_id, type, status, progress, error_msg, created_at, updated_at
+		FROM sync_jobs
+		WHERE status = 'QUEUED'
+		ORDER BY created_at ASC
+		LIMIT 1
+		FOR UPDATE SKIP LOCKED
+	`
+	err = tx.GetContext(ctx, &job, selectQuery)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil // No jobs queued
+		}
+		return nil, err
+	}
+
+	updateQuery := `
+		UPDATE sync_jobs
+		SET status = 'PROCESSING', updated_at = NOW()
+		WHERE id = $1
+	`
+	_, err = tx.ExecContext(ctx, updateQuery, job.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	// Update returning model status to PROCESSING before returning
+	job.Status = entity.SyncJobStatusProcessing
+	return &job, nil
+}
+

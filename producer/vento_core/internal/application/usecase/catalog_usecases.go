@@ -9,11 +9,12 @@ import (
 )
 
 type CatalogUsecases struct {
-	repo port.ProductRepository
+	repo    port.ProductRepository
+	tagRepo port.TagRepository
 }
 
-func NewCatalogUsecases(repo port.ProductRepository) *CatalogUsecases {
-	return &CatalogUsecases{repo: repo}
+func NewCatalogUsecases(repo port.ProductRepository, tagRepo port.TagRepository) *CatalogUsecases {
+	return &CatalogUsecases{repo: repo, tagRepo: tagRepo}
 }
 
 func (uc *CatalogUsecases) ListProducts(ctx context.Context, userID string) ([]dto.ProductResponse, error) {
@@ -24,7 +25,11 @@ func (uc *CatalogUsecases) ListProducts(ctx context.Context, userID string) ([]d
 
 	res := make([]dto.ProductResponse, len(products))
 	for i, p := range products {
-		res[i] = mapEntityToDTO(p)
+		tags, err := uc.tagRepo.ListByProductID(ctx, p.ID)
+		if err != nil {
+			return nil, err
+		}
+		res[i] = mapEntityToDTO(p, tags)
 	}
 	return res, nil
 }
@@ -32,20 +37,32 @@ func (uc *CatalogUsecases) ListProducts(ctx context.Context, userID string) ([]d
 func (uc *CatalogUsecases) CreateProduct(ctx context.Context, userID string, req dto.CreateProductRequest) (dto.ProductResponse, error) {
 	price := 0.0
 	if req.Price != nil { price = *req.Price }
-	
+
 	p := entity.NewProduct(userID, req.Name, req.SKU, req.Category, price)
-	
+
 	if req.Stock != nil { p.Stock = *req.Stock }
 	p.StockUnit = req.StockUnit
 	p.MaxStock = req.MaxStock
 	p.Supplier = req.Supplier
 	if req.SupplierCost != nil { p.SupplierCost = *req.SupplierCost }
+	p.Description = req.Description
+	p.Tags = req.Tags
+	p.ImageURL = req.ImageURL
 
 	if err := uc.repo.Save(ctx, p); err != nil {
 		return dto.ProductResponse{}, err
 	}
 
-	return mapEntityToDTO(p), nil
+	if err := uc.tagRepo.SetProductTags(ctx, p.ID, req.TagIDs); err != nil {
+		return dto.ProductResponse{}, err
+	}
+
+	tags, err := uc.tagRepo.ListByProductID(ctx, p.ID)
+	if err != nil {
+		return dto.ProductResponse{}, err
+	}
+
+	return mapEntityToDTO(p, tags), nil
 }
 
 func (uc *CatalogUsecases) BatchCreateProducts(ctx context.Context, userID string, req dto.BatchCreateProductRequest) ([]dto.ProductResponse, error) {
@@ -55,9 +72,9 @@ func (uc *CatalogUsecases) BatchCreateProducts(ctx context.Context, userID strin
 	for i, pReq := range req.Products {
 		price := 0.0
 		if pReq.Price != nil { price = *pReq.Price }
-		
+
 		p := entity.NewProduct(userID, pReq.Name, pReq.SKU, pReq.Category, price)
-		
+
 		if pReq.Stock != nil { p.Stock = *pReq.Stock }
 		p.StockUnit = pReq.StockUnit
 		if pReq.MaxStock != nil { p.MaxStock = pReq.MaxStock }
@@ -65,9 +82,10 @@ func (uc *CatalogUsecases) BatchCreateProducts(ctx context.Context, userID strin
 		if pReq.SupplierCost != nil { p.SupplierCost = *pReq.SupplierCost }
 		p.Description = pReq.Description
 		p.Tags = pReq.Tags
+		p.ImageURL = pReq.ImageURL
 
 		products[i] = p
-		res[i] = mapEntityToDTO(p)
+		res[i] = mapEntityToDTO(p, nil)
 	}
 
 	if err := uc.repo.SaveBatch(ctx, products); err != nil {
@@ -97,19 +115,52 @@ func (uc *CatalogUsecases) UpdateProduct(ctx context.Context, userID string, pro
 	if req.SupplierCost != nil { p.SupplierCost = *req.SupplierCost }
 	if req.Description != "" { p.Description = req.Description }
 	if req.Tags != "" { p.Tags = req.Tags }
+	if req.ImageURL != "" { p.ImageURL = req.ImageURL }
 
 	if err := uc.repo.Update(ctx, p); err != nil {
 		return dto.ProductResponse{}, err
 	}
 
-	return mapEntityToDTO(p), nil
+	if req.TagIDs != nil {
+		if err := uc.tagRepo.SetProductTags(ctx, p.ID, req.TagIDs); err != nil {
+			return dto.ProductResponse{}, err
+		}
+	}
+
+	tags, err := uc.tagRepo.ListByProductID(ctx, p.ID)
+	if err != nil {
+		return dto.ProductResponse{}, err
+	}
+
+	return mapEntityToDTO(p, tags), nil
 }
 
 func (uc *CatalogUsecases) DeleteProduct(ctx context.Context, userID string, productID string) error {
 	return uc.repo.Delete(ctx, productID, userID)
 }
 
-func mapEntityToDTO(p *entity.Product) dto.ProductResponse {
+func (uc *CatalogUsecases) GetProduct(ctx context.Context, userID string, productID string) (*dto.ProductResponse, error) {
+	p, err := uc.repo.GetByID(ctx, productID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if p == nil {
+		return nil, nil
+	}
+	tags, err := uc.tagRepo.ListByProductID(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	res := mapEntityToDTO(p, tags)
+	return &res, nil
+}
+
+func mapEntityToDTO(p *entity.Product, tags []*entity.Tag) dto.ProductResponse {
+	tagResponses := make([]dto.TagResponse, len(tags))
+	for idx, t := range tags {
+		tagResponses[idx] = mapTagEntityToDTO(t)
+	}
+
 	return dto.ProductResponse{
 		ID:           p.ID,
 		UserID:       p.UserID,
@@ -124,7 +175,9 @@ func mapEntityToDTO(p *entity.Product) dto.ProductResponse {
 		SupplierCost: ptr(p.SupplierCost),
 		Description:  p.Description,
 		Tags:         p.Tags,
+		ImageURL:     p.ImageURL,
 		CreatedAt:    p.CreatedAt,
 		UpdatedAt:    p.UpdatedAt,
+		TagRefs:      tagResponses,
 	}
 }

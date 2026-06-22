@@ -11,11 +11,32 @@ import (
 )
 
 type PaymentUsecases struct {
-	repo port.PaymentRepository
+	repo      port.PaymentRepository
+	orderRepo port.OrderRepository
 }
 
-func NewPaymentUsecases(repo port.PaymentRepository) *PaymentUsecases {
-	return &PaymentUsecases{repo: repo}
+func NewPaymentUsecases(repo port.PaymentRepository, orderRepo port.OrderRepository) *PaymentUsecases {
+	return &PaymentUsecases{repo: repo, orderRepo: orderRepo}
+}
+
+func orderPaymentConcept(kind entity.OrderPaymentKind, orderID string) string {
+	switch kind {
+	case entity.OrderPaymentKindDeposit:
+		return "Seña pedido #" + orderID
+	case entity.OrderPaymentKindBalance:
+		return "Saldo pedido #" + orderID
+	case entity.OrderPaymentKindPendingDebt:
+		return "Fiado pendiente pedido #" + orderID
+	default:
+		return "Pago pedido #" + orderID
+	}
+}
+
+func orderPaymentDisplayStatus(status entity.OrderPaymentStatus) string {
+	if status == entity.OrderPaymentStatusPaid {
+		return "completed"
+	}
+	return "pending"
 }
 
 func (uc *PaymentUsecases) SyncFromIA(ctx context.Context, userID string, req dto.BatchCreatePaymentRequest) error {
@@ -41,9 +62,9 @@ func (uc *PaymentUsecases) ListPayments(ctx context.Context, userID string) ([]d
 		return nil, err
 	}
 
-	res := make([]dto.PaymentResponse, len(payments))
-	for i, p := range payments {
-		res[i] = dto.PaymentResponse{
+	res := make([]dto.PaymentResponse, 0, len(payments))
+	for _, p := range payments {
+		res = append(res, dto.PaymentResponse{
 			ID:         p.ID,
 			UserID:     p.UserID,
 			ClientName: p.ClientName,
@@ -52,7 +73,32 @@ func (uc *PaymentUsecases) ListPayments(ctx context.Context, userID string) ([]d
 			Concept:    p.Concept,
 			CreatedAt:  p.CreatedAt,
 			UpdatedAt:  p.UpdatedAt,
-		}
+		})
 	}
+
+	if uc.orderRepo == nil {
+		return res, nil
+	}
+
+	orderPayments, err := uc.orderRepo.ListOrderPaymentsByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	for _, op := range orderPayments {
+		orderID := op.OrderID
+		res = append(res, dto.PaymentResponse{
+			ID:         op.ID,
+			UserID:     op.UserID,
+			OrderID:    &orderID,
+			ClientName: op.ClientName,
+			Amount:     op.Amount,
+			Method:     op.Method,
+			Status:     orderPaymentDisplayStatus(op.Status),
+			Concept:    orderPaymentConcept(op.Kind, op.OrderID),
+			CreatedAt:  op.CreatedAt,
+			UpdatedAt:  op.PaidAt,
+		})
+	}
+
 	return res, nil
 }

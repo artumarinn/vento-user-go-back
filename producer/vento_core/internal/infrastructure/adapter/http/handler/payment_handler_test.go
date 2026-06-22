@@ -29,7 +29,7 @@ func TestPaymentHandler_List(t *testing.T) {
 				return []*entity.Payment{}, nil
 			},
 		}
-		uc := usecase.NewPaymentUsecases(repo)
+		uc := usecase.NewPaymentUsecases(repo, nil)
 		h := handler.NewPaymentHandler(uc)
 		r, v1 := setupTestRouter()
 		v1.GET("/payments", func(c *gin.Context) {

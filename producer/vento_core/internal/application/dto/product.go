@@ -16,6 +16,8 @@ type CreateProductRequest struct {
 	SupplierCost *float64 `json:"supplier_cost"`
 	Description  string   `json:"description"`
 	Tags         string   `json:"tags"`
+	ImageURL     string   `json:"image_url"`
+	TagIDs       []string `json:"tag_ids"`
 }
 
 // BatchCreateProductRequest is the input DTO for batch creation.
@@ -36,6 +38,8 @@ type UpdateProductRequest struct {
 	SupplierCost *float64 `json:"supplier_cost"`
 	Description  string   `json:"description"`
 	Tags         string   `json:"tags"`
+	ImageURL     string   `json:"image_url"`
+	TagIDs       []string `json:"tag_ids"`
 }
 
 // ProductResponse is the output DTO for product information.
@@ -53,6 +57,8 @@ type ProductResponse struct {
 	SupplierCost *float64  `json:"supplier_cost"`
 	Description  string    `json:"description"`
 	Tags         string    `json:"tags"`
+	ImageURL     string    `json:"image_url"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	TagRefs      []TagResponse `json:"tag_refs"`
 }

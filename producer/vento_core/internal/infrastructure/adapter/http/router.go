@@ -13,7 +13,7 @@ import (
 )
 
 // NewRouter creates and configures the Gin router with all routes.
-func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, paymentHandler *handler.PaymentHandler, orderHandler *handler.OrderHandler, metaHandler *handler.MetaHandler, businessHandler *handler.BusinessHandler, syncJobHandler *handler.SyncJobHandler, authService port.AuthService, internalToken string) *gin.Engine {
+func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, insumoHandler *handler.InsumoHandler, serviceHandler *handler.ServiceHandler, paymentHandler *handler.PaymentHandler, orderHandler *handler.OrderHandler, metaHandler *handler.MetaHandler, businessHandler *handler.BusinessHandler, syncJobHandler *handler.SyncJobHandler, toolHandler *handler.ToolHandler, tagHandler *handler.TagHandler, authService port.AuthService, internalToken string, clientHandler *handler.ClientHandler) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
@@ -92,9 +92,16 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 			internal.GET("/business-profile/:userID", businessHandler.GetProfileInternal)
 			internal.GET("/products/:userID", productHandler.ListInternal)
 			internal.POST("/products/sync", productHandler.SyncFromIA)
+			internal.POST("/insumos/sync", insumoHandler.SyncFromIA)
+			internal.POST("/services/sync", serviceHandler.SyncFromIA)
 			internal.POST("/orders/sync", orderHandler.SyncFromIA)
 			internal.POST("/payments/sync", paymentHandler.SyncFromIA)
-			
+
+			// Tool Calling Endpoints
+			internal.GET("/tools/products/:productId/stock", toolHandler.GetStock)
+			internal.GET("/tools/products/:productId", toolHandler.GetProductDetails)
+			internal.POST("/tools/products/search", toolHandler.SearchProducts)
+
 			// Sync Jobs
 			internal.POST("/sync-jobs", syncJobHandler.CreateJob)
 			internal.GET("/sync-jobs/:id", syncJobHandler.GetJob)
@@ -117,6 +124,27 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 			products.POST("/batch", productHandler.CreateBatch)
 			products.PUT("/:id", productHandler.Update)
 			products.DELETE("/:id", productHandler.Delete)
+		}
+
+		insumos := v1.Group("/insumos")
+		insumos.Use(middleware.AuthMiddleware(authService))
+		{
+			insumos.GET("", insumoHandler.List)
+			insumos.POST("", insumoHandler.Create)
+			insumos.POST("/batch", insumoHandler.CreateBatch)
+			insumos.PUT("/:id", insumoHandler.Update)
+			insumos.DELETE("/:id", insumoHandler.Delete)
+		}
+
+		services := v1.Group("/services")
+		services.Use(middleware.AuthMiddleware(authService))
+		{
+			services.GET("", serviceHandler.List)
+			services.POST("", serviceHandler.Create)
+			services.POST("/batch", serviceHandler.CreateBatch)
+			services.PUT("/:id", serviceHandler.Update)
+			services.DELETE("/:id", serviceHandler.Delete)
+			services.POST("/:id/price-preview", serviceHandler.PricePreview)
 		}
 
 		// Alias for Frontend compatibility
@@ -150,6 +178,19 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 		orders.Use(middleware.AuthMiddleware(authService))
 		{
 			orders.GET("", orderHandler.List)
+			orders.POST("", orderHandler.Create)
+			orders.GET("/:id", orderHandler.GetDetail)
+			orders.PATCH("/:id/status", orderHandler.UpdateStatus)
+			orders.POST("/:id/payment", orderHandler.RegisterPayment)
+			orders.PUT("/:id", orderHandler.Update)
+			orders.DELETE("/:id", orderHandler.Delete)
+		}
+
+		clients := v1.Group("/clients")
+		clients.Use(middleware.AuthMiddleware(authService))
+		{
+			clients.GET("", clientHandler.List)
+			clients.POST("", clientHandler.Create)
 		}
 
 		metaConfigs := v1.Group("/meta-configs")
@@ -157,6 +198,14 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 		{
 			metaConfigs.POST("", metaHandler.Save)
 			metaConfigs.GET("", metaHandler.ListMine)
+		}
+
+		tagGroup := v1.Group("/tags")
+		tagGroup.Use(middleware.AuthMiddleware(authService))
+		{
+			tagGroup.GET("", tagHandler.List)
+			tagGroup.POST("", tagHandler.Create)
+			tagGroup.DELETE("/:id", tagHandler.Delete)
 		}
 	}
 

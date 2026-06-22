@@ -76,7 +76,13 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='tags') THEN
         ALTER TABLE products ADD COLUMN tags TEXT DEFAULT '';
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='products' AND column_name='image_url') THEN
+        ALTER TABLE products ADD COLUMN image_url TEXT DEFAULT '';
+    END IF;
 END $$;
+
+CREATE INDEX IF NOT EXISTS idx_products_user_name_search ON products(user_id, lower(name));
+CREATE INDEX IF NOT EXISTS idx_products_user_category    ON products(user_id, category);
 `
 
 const createBusinessProfilesTable = `
@@ -195,7 +201,99 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='client_id') THEN
         ALTER TABLE orders ADD COLUMN client_id VARCHAR(36) NOT NULL DEFAULT '';
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='channel') THEN
+        ALTER TABLE orders ADD COLUMN channel VARCHAR(20) NOT NULL DEFAULT 'presencial';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='delivery_date') THEN
+        ALTER TABLE orders ADD COLUMN delivery_date DATE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='payment_method') THEN
+        ALTER TABLE orders ADD COLUMN payment_method VARCHAR(20) NOT NULL DEFAULT 'cash';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='payment_status') THEN
+        ALTER TABLE orders ADD COLUMN payment_status VARCHAR(20) NOT NULL DEFAULT 'pending';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='partial_amount') THEN
+        ALTER TABLE orders ADD COLUMN partial_amount DECIMAL(15, 2);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='notes') THEN
+        ALTER TABLE orders ADD COLUMN notes TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='payment_recorded_method') THEN
+        ALTER TABLE orders ADD COLUMN payment_recorded_method VARCHAR(20);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='payment_recorded_amount') THEN
+        ALTER TABLE orders ADD COLUMN payment_recorded_amount DECIMAL(15, 2);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='payment_recorded_at') THEN
+        ALTER TABLE orders ADD COLUMN payment_recorded_at TIMESTAMPTZ;
+    END IF;
 END $$;
+
+UPDATE orders SET status = 'pending' WHERE status = 'seña_pagada';
+UPDATE orders SET status = 'processing' WHERE status = 'en_produccion';
+UPDATE orders SET status = 'ready' WHERE status = 'listo_entregar';
+UPDATE orders SET status = 'delivered' WHERE status = 'entregado';
+`
+
+const createOrderStatusHistoryTable = `
+CREATE TABLE IF NOT EXISTS order_status_history (
+    id SERIAL PRIMARY KEY,
+    order_id VARCHAR(36) NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL,
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_status_history_order_id ON order_status_history(order_id);
+`
+
+const createOrderPaymentsTable = `
+CREATE TABLE IF NOT EXISTS order_payments (
+    id         UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id   VARCHAR(36)    NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    user_id    VARCHAR(36)    NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount     DECIMAL(15, 2) NOT NULL,
+    method     VARCHAR(20)    NOT NULL,
+    kind       VARCHAR(20)    NOT NULL,
+    status     VARCHAR(20)    NOT NULL DEFAULT 'paid',
+    paid_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_payments_order_id ON order_payments(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_payments_user_id  ON order_payments(user_id);
+
+INSERT INTO order_payments (order_id, user_id, amount, method, kind, status, paid_at, created_at)
+SELECT o.id, o.user_id, o.partial_amount, o.payment_method, 'deposit', 'paid', o.created_at, o.created_at
+FROM orders o
+WHERE o.partial_amount IS NOT NULL
+  AND o.partial_amount > 0
+  AND NOT EXISTS (
+      SELECT 1 FROM order_payments op WHERE op.order_id = o.id AND op.kind = 'deposit'
+  );
+`
+
+const createClientsTable = `
+CREATE TABLE IF NOT EXISTS clients (
+    id VARCHAR(36) PRIMARY KEY,
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id),
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(50),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='clients' AND column_name='social_network') THEN
+        ALTER TABLE clients ADD COLUMN social_network VARCHAR(20);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='clients' AND column_name='social_handle') THEN
+        ALTER TABLE clients ADD COLUMN social_handle VARCHAR(255);
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_clients_user_id ON clients(user_id);
 `
 
 const createSyncJobsTable = `
@@ -236,6 +334,38 @@ CREATE INDEX IF NOT EXISTS idx_webhook_events_received_at ON webhook_events(rece
 CREATE INDEX IF NOT EXISTS idx_webhook_events_source      ON webhook_events(source);
 `
 
+const createServicesTable = `
+CREATE TABLE IF NOT EXISTS services (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    formula TEXT NOT NULL,
+    minimum_lead_time INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_services_user_id ON services(user_id);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'update_services_updated_at'
+    ) THEN
+        CREATE TRIGGER update_services_updated_at
+        BEFORE UPDATE ON services
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'services' AND column_name = 'variables_schema'
+    ) THEN
+        ALTER TABLE services ADD COLUMN variables_schema JSONB NOT NULL DEFAULT '[]'::jsonb;
+    END IF;
+END $$;
+`
+
 const createPasswordResetsTable = `
 CREATE TABLE IF NOT EXISTS password_resets (
     email      VARCHAR(255) NOT NULL,
@@ -268,6 +398,10 @@ func NewConnection(dsn string) (*sqlx.DB, error) {
 		{"payments", createPaymentsTable},
 		{"meta_configs", createMetaConfigsTable},
 		{"orders", createOrdersTable},
+		{"order_status_history", createOrderStatusHistoryTable},
+		{"order_payments", createOrderPaymentsTable},
+		{"clients", createClientsTable},
+		{"services", createServicesTable},
 		{"sync_jobs", createSyncJobsTable},
 		{"webhook_events", createWebhookEventsTable},
 		{"password_resets", createPasswordResetsTable},

@@ -21,8 +21,10 @@ type Product struct {
 	SupplierCost float64   `json:"supplier_cost"`
 	Description  string    `json:"description"`
 	Tags         string    `json:"tags"`
+	ImageURL     string    `json:"image_url"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+	TagRefs      []Tag     `json:"tag_refs"`
 }
 
 // NewProduct creates a new product instance with a generated ID.

@@ -14,4 +14,5 @@ type ProductRepository interface {
 	GetByID(ctx context.Context, id string, userID string) (*entity.Product, error)
 	ListByUserID(ctx context.Context, userID string) ([]*entity.Product, error)
 	SaveBatch(ctx context.Context, products []*entity.Product) error
+	Search(ctx context.Context, userID string, query string, category string, limit int) ([]*entity.Product, error)
 }

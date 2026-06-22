@@ -17,8 +17,10 @@ type BatchCreatePaymentRequest struct {
 type PaymentResponse struct {
 	ID         string    `json:"id"`
 	UserID     string    `json:"user_id"`
+	OrderID    *string   `json:"order_id"`
 	ClientName string    `json:"client_name"`
 	Amount     float64   `json:"amount"`
+	Method     string    `json:"method"`
 	Status     string    `json:"status"`
 	Concept    string    `json:"concept"`
 	CreatedAt  time.Time `json:"created_at"`
