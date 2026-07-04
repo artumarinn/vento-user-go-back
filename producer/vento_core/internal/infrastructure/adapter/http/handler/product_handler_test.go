@@ -14,35 +14,81 @@ import (
 )
 
 type fakeProductRepo struct {
-	saveFunc func(ctx context.Context, product *entity.Product) error
-	updateFunc func(ctx context.Context, product *entity.Product) error
-	deleteFunc func(ctx context.Context, id string, userID string) error
-	getByIDFunc func(ctx context.Context, id string, userID string) (*entity.Product, error)
-	listByUserIDFunc func(ctx context.Context, userID string) ([]*entity.Product, error)
-	saveBatchFunc func(ctx context.Context, products []*entity.Product) error
+	saveFunc           func(ctx context.Context, product *entity.Product) error
+	updateFunc         func(ctx context.Context, product *entity.Product) error
+	deleteFunc         func(ctx context.Context, id string, userID string) error
+	getByIDFunc        func(ctx context.Context, id string, userID string) (*entity.Product, error)
+	listByUserIDFunc   func(ctx context.Context, userID string) ([]*entity.Product, error)
+	saveBatchFunc      func(ctx context.Context, products []*entity.Product) error
+	adjustStockFunc    func(ctx context.Context, productID string, userID string, delta float64) error
+	insertMovementFunc func(ctx context.Context, movement *entity.StockMovement) error
 }
 
-func (f *fakeProductRepo) Save(ctx context.Context, p *entity.Product) error { return f.saveFunc(ctx, p) }
-func (f *fakeProductRepo) Update(ctx context.Context, p *entity.Product) error { return f.updateFunc(ctx, p) }
-func (f *fakeProductRepo) Delete(ctx context.Context, id, u string) error { return f.deleteFunc(ctx, id, u) }
-func (f *fakeProductRepo) GetByID(ctx context.Context, id, u string) (*entity.Product, error) { return f.getByIDFunc(ctx, id, u) }
-func (f *fakeProductRepo) ListByUserID(ctx context.Context, u string) ([]*entity.Product, error) { return f.listByUserIDFunc(ctx, u) }
-func (f *fakeProductRepo) SaveBatch(ctx context.Context, p []*entity.Product) error { return f.saveBatchFunc(ctx, p) }
+func (f *fakeProductRepo) Save(ctx context.Context, p *entity.Product) error {
+	return f.saveFunc(ctx, p)
+}
+func (f *fakeProductRepo) Update(ctx context.Context, p *entity.Product) error {
+	return f.updateFunc(ctx, p)
+}
+func (f *fakeProductRepo) Delete(ctx context.Context, id, u string) error {
+	return f.deleteFunc(ctx, id, u)
+}
+func (f *fakeProductRepo) GetByID(ctx context.Context, id, u string) (*entity.Product, error) {
+	return f.getByIDFunc(ctx, id, u)
+}
+func (f *fakeProductRepo) ListByUserID(ctx context.Context, u string) ([]*entity.Product, error) {
+	return f.listByUserIDFunc(ctx, u)
+}
+func (f *fakeProductRepo) SaveBatch(ctx context.Context, p []*entity.Product) error {
+	return f.saveBatchFunc(ctx, p)
+}
 func (f *fakeProductRepo) Search(ctx context.Context, userID string, query string, category string, limit int) ([]*entity.Product, error) {
 	return nil, nil
+}
+func (f *fakeProductRepo) AdjustStock(ctx context.Context, productID string, userID string, delta float64) error {
+	if f.adjustStockFunc != nil {
+		return f.adjustStockFunc(ctx, productID, userID, delta)
+	}
+	return nil
+}
+func (f *fakeProductRepo) InsertStockMovement(ctx context.Context, movement *entity.StockMovement) error {
+	if f.insertMovementFunc != nil {
+		return f.insertMovementFunc(ctx, movement)
+	}
+	return nil
+}
+func (f *fakeProductRepo) AdjustLocationStock(ctx context.Context, locationID string, productID string, delta float64) error {
+	return nil
+}
+func (f *fakeProductRepo) GetLocationStock(ctx context.Context, locationID string, productID string) (float64, error) {
+	return 0, nil
 }
 
 type fakeTagRepo struct{}
 
-func (f *fakeTagRepo) Save(ctx context.Context, tag *entity.Tag) error { return nil }
+func (f *fakeTagRepo) Save(ctx context.Context, tag *entity.Tag) error            { return nil }
 func (f *fakeTagRepo) Delete(ctx context.Context, id string, userID string) error { return nil }
-func (f *fakeTagRepo) ListByUserID(ctx context.Context, userID string) ([]*entity.Tag, error) { return nil, nil }
-func (f *fakeTagRepo) ListByInsumoID(ctx context.Context, insumoID string) ([]*entity.Tag, error) { return nil, nil }
-func (f *fakeTagRepo) SetInsumoTags(ctx context.Context, insumoID string, tagIDs []string) error { return nil }
-func (f *fakeTagRepo) ListByProductID(ctx context.Context, productID string) ([]*entity.Tag, error) { return nil, nil }
-func (f *fakeTagRepo) SetProductTags(ctx context.Context, productID string, tagIDs []string) error { return nil }
-func (f *fakeTagRepo) ListByServiceID(ctx context.Context, serviceID string) ([]*entity.Tag, error) { return nil, nil }
-func (f *fakeTagRepo) SetServiceTags(ctx context.Context, serviceID string, tagIDs []string) error { return nil }
+func (f *fakeTagRepo) ListByUserID(ctx context.Context, userID string) ([]*entity.Tag, error) {
+	return nil, nil
+}
+func (f *fakeTagRepo) ListByInsumoID(ctx context.Context, insumoID string) ([]*entity.Tag, error) {
+	return nil, nil
+}
+func (f *fakeTagRepo) SetInsumoTags(ctx context.Context, insumoID string, tagIDs []string) error {
+	return nil
+}
+func (f *fakeTagRepo) ListByProductID(ctx context.Context, productID string) ([]*entity.Tag, error) {
+	return nil, nil
+}
+func (f *fakeTagRepo) SetProductTags(ctx context.Context, productID string, tagIDs []string) error {
+	return nil
+}
+func (f *fakeTagRepo) ListByServiceID(ctx context.Context, serviceID string) ([]*entity.Tag, error) {
+	return nil, nil
+}
+func (f *fakeTagRepo) SetServiceTags(ctx context.Context, serviceID string, tagIDs []string) error {
+	return nil
+}
 
 func TestProductHandler_Create(t *testing.T) {
 	t.Run("Happy Path", func(t *testing.T) {
@@ -51,7 +97,7 @@ func TestProductHandler_Create(t *testing.T) {
 				return nil
 			},
 		}
-		uc := usecase.NewCatalogUsecases(repo, &fakeTagRepo{})
+		uc := usecase.NewCatalogUsecases(repo, &fakeTagRepo{}, &fakeLocationRepo{})
 		h := handler.NewProductHandler(uc)
 		r, v1 := setupTestRouter()
 		v1.POST("/products", func(c *gin.Context) {
@@ -77,7 +123,7 @@ func TestProductHandler_SyncFromIA(t *testing.T) {
 				return nil
 			},
 		}
-		uc := usecase.NewCatalogUsecases(repo, &fakeTagRepo{})
+		uc := usecase.NewCatalogUsecases(repo, &fakeTagRepo{}, &fakeLocationRepo{})
 		h := handler.NewProductHandler(uc)
 		r, v1 := setupTestRouter()
 		// Inject tenantUserID the same way the internal token middleware does
@@ -103,7 +149,7 @@ func TestProductHandler_SyncFromIA(t *testing.T) {
 				return nil
 			},
 		}
-		uc := usecase.NewCatalogUsecases(repo, &fakeTagRepo{})
+		uc := usecase.NewCatalogUsecases(repo, &fakeTagRepo{}, &fakeLocationRepo{})
 		h := handler.NewProductHandler(uc)
 		r, v1 := setupTestRouter()
 		v1.POST("/internal/products/sync", func(c *gin.Context) {
@@ -129,7 +175,7 @@ func TestProductHandler_SyncFromIA(t *testing.T) {
 	})
 
 	t.Run("EmptyProductsListReturns200", func(t *testing.T) {
-		h := handler.NewProductHandler(usecase.NewCatalogUsecases(&fakeProductRepo{}, &fakeTagRepo{}))
+		h := handler.NewProductHandler(usecase.NewCatalogUsecases(&fakeProductRepo{}, &fakeTagRepo{}, &fakeLocationRepo{}))
 		r, v1 := setupTestRouter()
 		v1.POST("/internal/products/sync", func(c *gin.Context) {
 			c.Set("tenantUserID", "user-123")

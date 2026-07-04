@@ -32,6 +32,12 @@ func (f *seededServiceRepo) ListByUserID(ctx context.Context, userID string) ([]
 func (f *seededServiceRepo) SaveBatch(ctx context.Context, services []*entity.Service) error {
 	return nil
 }
+func (f *seededServiceRepo) SetServiceInsumos(ctx context.Context, serviceID string, insumos []entity.ServiceInsumo) error {
+	return nil
+}
+func (f *seededServiceRepo) ListServiceInsumos(ctx context.Context, serviceID string) ([]entity.ServiceInsumoDetail, error) {
+	return nil, nil
+}
 
 func ptr64(f float64) *float64 { return &f }
 func ptrS(s string) *string    { return &s }

@@ -121,6 +121,64 @@ func (r *PostgresServiceRepository) SaveBatch(ctx context.Context, services []*e
 	return tx.Commit()
 }
 
+func (r *PostgresServiceRepository) SetServiceInsumos(ctx context.Context, serviceID string, insumos []entity.ServiceInsumo) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM service_insumos WHERE service_id = $1`, serviceID); err != nil {
+		return err
+	}
+
+	if len(insumos) > 0 {
+		query := `INSERT INTO service_insumos (service_id, insumo_id, quantity_per_unit) VALUES ($1, $2, $3)`
+		for _, si := range insumos {
+			if _, err := tx.ExecContext(ctx, query, serviceID, si.InsumoID, si.QuantityPerUnit); err != nil {
+				return err
+			}
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (r *PostgresServiceRepository) ListServiceInsumos(ctx context.Context, serviceID string) ([]entity.ServiceInsumoDetail, error) {
+	type row struct {
+		ID              string    `db:"id"`
+		ServiceID       string    `db:"service_id"`
+		InsumoID        string    `db:"insumo_id"`
+		QuantityPerUnit float64   `db:"quantity_per_unit"`
+		CreatedAt       time.Time `db:"created_at"`
+		InsumoName      string    `db:"insumo_name"`
+		Unit            string    `db:"unit"`
+	}
+	var rows []row
+	query := `
+		SELECT si.id, si.service_id, si.insumo_id, si.quantity_per_unit, si.created_at,
+		       i.name AS insumo_name, i.stock_unit AS unit
+		FROM service_insumos si
+		JOIN insumos i ON i.id = si.insumo_id
+		WHERE si.service_id = $1
+	`
+	if err := r.db.SelectContext(ctx, &rows, query, serviceID); err != nil {
+		return nil, err
+	}
+	details := make([]entity.ServiceInsumoDetail, len(rows))
+	for i, rw := range rows {
+		details[i] = entity.ServiceInsumoDetail{
+			ServiceInsumo: entity.ServiceInsumo{
+				ID: rw.ID, ServiceID: rw.ServiceID, InsumoID: rw.InsumoID,
+				QuantityPerUnit: rw.QuantityPerUnit, CreatedAt: rw.CreatedAt,
+			},
+			InsumoName: rw.InsumoName,
+			Unit:       rw.Unit,
+		}
+	}
+	return details, nil
+}
+
 func mapServiceRowToEntity(row serviceRow) *entity.Service {
 	var variablesSchema []catalog.VariableDefinition
 	_ = json.Unmarshal(row.VariablesSchema, &variablesSchema)

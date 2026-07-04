@@ -9,18 +9,38 @@ import (
 )
 
 type CatalogUsecases struct {
-	repo    port.ProductRepository
-	tagRepo port.TagRepository
+	repo         port.ProductRepository
+	tagRepo      port.TagRepository
+	locationRepo port.LocationRepository
 }
 
-func NewCatalogUsecases(repo port.ProductRepository, tagRepo port.TagRepository) *CatalogUsecases {
-	return &CatalogUsecases{repo: repo, tagRepo: tagRepo}
+func NewCatalogUsecases(repo port.ProductRepository, tagRepo port.TagRepository, locationRepo port.LocationRepository) *CatalogUsecases {
+	return &CatalogUsecases{repo: repo, tagRepo: tagRepo, locationRepo: locationRepo}
 }
 
-func (uc *CatalogUsecases) ListProducts(ctx context.Context, userID string) ([]dto.ProductResponse, error) {
+// ListProducts returns the catalog for a user. When locationID is non-empty
+// AND owned by userID, each product's Stock field is overridden with its
+// per-location quantity (location_stock) instead of the shared aggregate —
+// used for the ?location_id= filtered inventory view. A locationID that
+// does not belong to userID is ignored and the aggregate view is returned
+// instead, so a caller can never read another tenant's location_stock by
+// guessing/reusing a foreign location UUID. Omitted locationID also keeps
+// the aggregate view.
+func (uc *CatalogUsecases) ListProducts(ctx context.Context, userID string, locationID string) ([]dto.ProductResponse, error) {
 	products, err := uc.repo.ListByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+
+	ownedLocationID := ""
+	if locationID != "" {
+		loc, err := uc.locationRepo.GetByID(ctx, locationID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if loc != nil {
+			ownedLocationID = loc.ID
+		}
 	}
 
 	res := make([]dto.ProductResponse, len(products))
@@ -30,6 +50,13 @@ func (uc *CatalogUsecases) ListProducts(ctx context.Context, userID string) ([]d
 			return nil, err
 		}
 		res[i] = mapEntityToDTO(p, tags)
+		if ownedLocationID != "" {
+			stock, err := uc.repo.GetLocationStock(ctx, ownedLocationID, p.ID)
+			if err != nil {
+				return nil, err
+			}
+			res[i].Stock = ptr(stock)
+		}
 	}
 	return res, nil
 }

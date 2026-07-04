@@ -135,6 +135,28 @@ func (h *ServiceHandler) PricePreview(c *gin.Context) {
 	})
 }
 
+// PreviewPriceDraft computes the price for an in-progress service definition
+// (formula + variables_schema not yet saved), used by the catalog "probá tu
+// precio" sandbox so a service author can validate pricing before saving.
+func (h *ServiceHandler) PreviewPriceDraft(c *gin.Context) {
+	var req dto.PreviewPriceDraftRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	unitPrice, err := h.serviceUC.PreviewPriceDraft(req.Formula, req.VariablesSchema, req.Variables)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.PreviewPriceResponse{
+		UnitPrice: unitPrice,
+		LineTotal: unitPrice,
+	})
+}
+
 func (h *ServiceHandler) Delete(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 	serviceID := c.Param("id")

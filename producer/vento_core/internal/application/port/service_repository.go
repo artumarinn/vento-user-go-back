@@ -14,4 +14,6 @@ type ServiceRepository interface {
 	GetByID(ctx context.Context, id string, userID string) (*entity.Service, error)
 	ListByUserID(ctx context.Context, userID string) ([]*entity.Service, error)
 	SaveBatch(ctx context.Context, services []*entity.Service) error
+	SetServiceInsumos(ctx context.Context, serviceID string, insumos []entity.ServiceInsumo) error
+	ListServiceInsumos(ctx context.Context, serviceID string) ([]entity.ServiceInsumoDetail, error)
 }

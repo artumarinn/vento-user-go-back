@@ -7,6 +7,21 @@ import (
 	"github.com/vento-ai/vento-user-go-back/producer/vento_core/internal/domain/entity"
 )
 
+// ServiceInsumoInput is the input DTO for declaring a recipe line when
+// creating/updating a Service.
+type ServiceInsumoInput struct {
+	InsumoID        string  `json:"insumo_id" binding:"required"`
+	QuantityPerUnit float64 `json:"quantity_per_unit" binding:"required"`
+}
+
+// ServiceInsumoResponse is the output DTO for a service's recipe line.
+type ServiceInsumoResponse struct {
+	InsumoID        string  `json:"insumo_id"`
+	InsumoName      string  `json:"insumo_name"`
+	QuantityPerUnit float64 `json:"quantity_per_unit"`
+	Unit            string  `json:"unit"`
+}
+
 // CreateServiceRequest is the input DTO for creating a new service.
 type CreateServiceRequest struct {
 	UserID          string                       `json:"user_id"`
@@ -15,6 +30,7 @@ type CreateServiceRequest struct {
 	MinimumLeadTime int                          `json:"minimum_lead_time"`
 	TagIDs          []string                     `json:"tag_ids"`
 	VariablesSchema []catalog.VariableDefinition `json:"variables_schema"`
+	Insumos         []ServiceInsumoInput         `json:"insumos"`
 }
 
 // BatchCreateServiceRequest is the input DTO for batch creation.
@@ -29,6 +45,7 @@ type UpdateServiceRequest struct {
 	MinimumLeadTime int                          `json:"minimum_lead_time"`
 	TagIDs          []string                     `json:"tag_ids"`
 	VariablesSchema []catalog.VariableDefinition `json:"variables_schema"`
+	Insumos         []ServiceInsumoInput         `json:"insumos"`
 }
 
 // ServiceResponse is the output DTO for service information.
@@ -42,11 +59,21 @@ type ServiceResponse struct {
 	CreatedAt       time.Time                    `json:"created_at"`
 	UpdatedAt       time.Time                    `json:"updated_at"`
 	Tags            []TagResponse                `json:"tags"`
+	Insumos         []ServiceInsumoResponse      `json:"insumos"`
 }
 
 // PreviewPriceRequest is the input DTO for the price-preview endpoint.
 type PreviewPriceRequest struct {
 	Variables []entity.OrderItemVariable `json:"variables"`
+}
+
+// PreviewPriceDraftRequest is the input DTO for previewing a price using an
+// unsaved formula and variable schema (used while a Service is still being
+// authored, before it has an ID).
+type PreviewPriceDraftRequest struct {
+	Formula         string                       `json:"formula" binding:"required"`
+	VariablesSchema []catalog.VariableDefinition `json:"variables_schema"`
+	Variables       []entity.OrderItemVariable   `json:"variables"`
 }
 
 // PreviewPriceResponse is the output DTO for the price-preview endpoint.

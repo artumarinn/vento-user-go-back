@@ -32,7 +32,11 @@ func (uc *ServiceUsecases) ListServices(ctx context.Context, userID string) ([]d
 		if err != nil {
 			return nil, err
 		}
-		res[i] = mapServiceEntityToDTO(service, tags)
+		insumos, err := uc.repo.ListServiceInsumos(ctx, service.ID)
+		if err != nil {
+			return nil, err
+		}
+		res[i] = mapServiceEntityToDTO(service, tags, insumos)
 	}
 	return res, nil
 }
@@ -75,12 +79,21 @@ func (uc *ServiceUsecases) CreateService(ctx context.Context, userID string, req
 		return dto.ServiceResponse{}, err
 	}
 
+	if err := uc.repo.SetServiceInsumos(ctx, s.ID, mapServiceInsumoInputsToEntities(s.ID, req.Insumos)); err != nil {
+		return dto.ServiceResponse{}, err
+	}
+
 	tags, err := uc.tagRepo.ListByServiceID(ctx, s.ID)
 	if err != nil {
 		return dto.ServiceResponse{}, err
 	}
 
-	return mapServiceEntityToDTO(s, tags), nil
+	insumos, err := uc.repo.ListServiceInsumos(ctx, s.ID)
+	if err != nil {
+		return dto.ServiceResponse{}, err
+	}
+
+	return mapServiceEntityToDTO(s, tags, insumos), nil
 }
 
 func (uc *ServiceUsecases) BatchCreateServices(ctx context.Context, userID string, req dto.BatchCreateServiceRequest) ([]dto.ServiceResponse, error) {
@@ -90,7 +103,7 @@ func (uc *ServiceUsecases) BatchCreateServices(ctx context.Context, userID strin
 	for i, sReq := range req.Services {
 		service := entity.NewService(userID, sReq.Name, sReq.Formula, sReq.MinimumLeadTime)
 		services[i] = service
-		res[i] = mapServiceEntityToDTO(service, nil)
+		res[i] = mapServiceEntityToDTO(service, nil, nil)
 	}
 
 	if err := uc.repo.SaveBatch(ctx, services); err != nil {
@@ -140,12 +153,23 @@ func (uc *ServiceUsecases) UpdateService(ctx context.Context, userID string, ser
 		}
 	}
 
+	if req.Insumos != nil {
+		if err := uc.repo.SetServiceInsumos(ctx, s.ID, mapServiceInsumoInputsToEntities(s.ID, req.Insumos)); err != nil {
+			return dto.ServiceResponse{}, err
+		}
+	}
+
 	tags, err := uc.tagRepo.ListByServiceID(ctx, s.ID)
 	if err != nil {
 		return dto.ServiceResponse{}, err
 	}
 
-	return mapServiceEntityToDTO(s, tags), nil
+	insumos, err := uc.repo.ListServiceInsumos(ctx, s.ID)
+	if err != nil {
+		return dto.ServiceResponse{}, err
+	}
+
+	return mapServiceEntityToDTO(s, tags, insumos), nil
 }
 
 func (uc *ServiceUsecases) DeleteService(ctx context.Context, userID string, serviceID string) error {
@@ -164,14 +188,44 @@ func (uc *ServiceUsecases) GetService(ctx context.Context, userID string, servic
 	if err != nil {
 		return nil, err
 	}
-	res := mapServiceEntityToDTO(s, tags)
+	insumos, err := uc.repo.ListServiceInsumos(ctx, s.ID)
+	if err != nil {
+		return nil, err
+	}
+	res := mapServiceEntityToDTO(s, tags, insumos)
 	return &res, nil
 }
 
-func mapServiceEntityToDTO(s *entity.Service, tags []*entity.Tag) dto.ServiceResponse {
+// mapServiceInsumoInputsToEntities converts the request-level recipe input
+// into persistence-ready entities, attaching the parent ServiceID — mirrors
+// how tag IDs are passed through tagRepo.SetServiceTags but insumos need the
+// quantity_per_unit carried along, so they cannot reuse the plain []string shape.
+func mapServiceInsumoInputsToEntities(serviceID string, inputs []dto.ServiceInsumoInput) []entity.ServiceInsumo {
+	insumos := make([]entity.ServiceInsumo, len(inputs))
+	for i, in := range inputs {
+		insumos[i] = entity.ServiceInsumo{
+			ServiceID:       serviceID,
+			InsumoID:        in.InsumoID,
+			QuantityPerUnit: in.QuantityPerUnit,
+		}
+	}
+	return insumos
+}
+
+func mapServiceEntityToDTO(s *entity.Service, tags []*entity.Tag, insumos []entity.ServiceInsumoDetail) dto.ServiceResponse {
 	tagResponses := make([]dto.TagResponse, len(tags))
 	for idx, t := range tags {
 		tagResponses[idx] = mapTagEntityToDTO(t)
+	}
+
+	insumoResponses := make([]dto.ServiceInsumoResponse, len(insumos))
+	for idx, in := range insumos {
+		insumoResponses[idx] = dto.ServiceInsumoResponse{
+			InsumoID:        in.InsumoID,
+			InsumoName:      in.InsumoName,
+			QuantityPerUnit: in.QuantityPerUnit,
+			Unit:            in.Unit,
+		}
 	}
 
 	return dto.ServiceResponse{
@@ -184,6 +238,7 @@ func mapServiceEntityToDTO(s *entity.Service, tags []*entity.Tag) dto.ServiceRes
 		CreatedAt:       s.CreatedAt,
 		UpdatedAt:       s.UpdatedAt,
 		Tags:            tagResponses,
+		Insumos:         insumoResponses,
 	}
 }
 
@@ -206,4 +261,25 @@ func (uc *ServiceUsecases) PreviewPrice(ctx context.Context, userID, serviceID s
 	}
 
 	return pricing.Evaluate(s.Formula, varMap)
+}
+
+// PreviewPriceDraft computes the price an in-progress (not yet persisted)
+// formula+schema would yield, reusing the same buildVarMap+pricing.Evaluate
+// path as PreviewPrice, so a service author sees the exact price a real
+// order would compute before saving the service.
+func (uc *ServiceUsecases) PreviewPriceDraft(formula string, schema []catalog.VariableDefinition, vars []entity.OrderItemVariable) (float64, error) {
+	idents, err := allowedVariableIdents(schema)
+	if err != nil {
+		return 0, err
+	}
+	if err := pricing.Validate(formula, idents); err != nil {
+		return 0, err
+	}
+
+	draft := &entity.Service{Formula: formula, VariablesSchema: schema}
+	varMap, err := buildVarMap(draft, vars)
+	if err != nil {
+		return 0, err
+	}
+	return pricing.Evaluate(draft.Formula, varMap)
 }

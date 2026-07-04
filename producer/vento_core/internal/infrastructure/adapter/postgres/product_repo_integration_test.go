@@ -129,6 +129,55 @@ func TestIntegration_ProductRepo_OnConflict_UpdatesDescriptionWhenProvided(t *te
 	assert.Equal(t, "Descripción actualizada.", products[0].Description)
 }
 
+func TestIntegration_ProductRepo_Search_PluralMatchesSingularProductName(t *testing.T) {
+	env := setupProductTestEnv(t)
+	ctx := context.Background()
+
+	p := entity.NewProduct(env.userID, "Llavero generico PLA", "SKU-LLAV", "Llaveros", 1500)
+	p.Stock = 25
+	require.NoError(t, env.repo.Save(ctx, p))
+
+	products, err := env.repo.Search(ctx, env.userID, "llaveros", "", 20)
+	require.NoError(t, err)
+	require.Len(t, products, 1, "plural query 'llaveros' must match singular product name 'Llavero generico PLA'")
+	assert.Equal(t, "Llavero generico PLA", products[0].Name)
+}
+
+func TestIntegration_ProductRepo_Search_CaseAndAccentInsensitive(t *testing.T) {
+	env := setupProductTestEnv(t)
+	ctx := context.Background()
+
+	p := entity.NewProduct(env.userID, "Peluche Canción de Cuna", "SKU-CANC", "Juguetes", 3000)
+	p.Stock = 4
+	require.NoError(t, env.repo.Save(ctx, p))
+
+	products, err := env.repo.Search(ctx, env.userID, "CANCION", "", 20)
+	require.NoError(t, err)
+	require.Len(t, products, 1, "search must be case-insensitive and accent-insensitive")
+	assert.Equal(t, "Peluche Canción de Cuna", products[0].Name)
+}
+
+func TestIntegration_ProductRepo_GetByID_MalformedID_ReturnsNilNotError(t *testing.T) {
+	env := setupProductTestEnv(t)
+	ctx := context.Background()
+
+	// Regression: the LLM sometimes passes a product NAME instead of a UUID
+	// (e.g. "resina abs-like"). Postgres rejects that at the type level
+	// (22P02) — GetByID must swallow it as "not found", not bubble a 500.
+	product, err := env.repo.GetByID(ctx, "resina abs-like", env.userID)
+	require.NoError(t, err)
+	assert.Nil(t, product)
+}
+
+func TestIntegration_ProductRepo_GetByID_NonExistentValidUUID_ReturnsNilNotError(t *testing.T) {
+	env := setupProductTestEnv(t)
+	ctx := context.Background()
+
+	product, err := env.repo.GetByID(ctx, uuid.New().String(), env.userID)
+	require.NoError(t, err)
+	assert.Nil(t, product)
+}
+
 func TestIntegration_ProductRepo_SaveBatch_PersistsAllFields(t *testing.T) {
 	env := setupProductTestEnv(t)
 	ctx := context.Background()

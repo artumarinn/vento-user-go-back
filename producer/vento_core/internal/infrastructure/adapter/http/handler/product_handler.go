@@ -17,9 +17,13 @@ func NewProductHandler(catalogUC *usecase.CatalogUsecases) *ProductHandler {
 	return &ProductHandler{catalogUC: catalogUC}
 }
 
+// List handles GET /api/v1/products. An optional ?location_id= query param
+// returns each product's stock at that location instead of the shared
+// aggregate; omitted keeps the aggregate view.
 func (h *ProductHandler) List(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
-	products, err := h.catalogUC.ListProducts(c.Request.Context(), userID)
+	locationID := c.Query("location_id")
+	products, err := h.catalogUC.ListProducts(c.Request.Context(), userID, locationID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -30,7 +34,7 @@ func (h *ProductHandler) List(c *gin.Context) {
 func (h *ProductHandler) ListInternal(c *gin.Context) {
 	userID := c.Param("userID")
 	logger.L().Debug("Core: Internal request to list products", "userID", userID)
-	products, err := h.catalogUC.ListProducts(c.Request.Context(), userID)
+	products, err := h.catalogUC.ListProducts(c.Request.Context(), userID, "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
