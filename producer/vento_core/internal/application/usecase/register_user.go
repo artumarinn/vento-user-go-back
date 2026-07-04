@@ -12,15 +12,17 @@ import (
 
 // RegisterUser orchestrates the user registration flow.
 type RegisterUser struct {
-	userRepo    port.UserRepository
-	authService port.AuthService
+	userRepo     port.UserRepository
+	authService  port.AuthService
+	locationRepo port.LocationRepository
 }
 
 // NewRegisterUser creates a RegisterUser use case with its dependencies.
-func NewRegisterUser(repo port.UserRepository, auth port.AuthService) *RegisterUser {
+func NewRegisterUser(repo port.UserRepository, auth port.AuthService, locationRepo port.LocationRepository) *RegisterUser {
 	return &RegisterUser{
-		userRepo:    repo,
-		authService: auth,
+		userRepo:     repo,
+		authService:  auth,
+		locationRepo: locationRepo,
 	}
 }
 
@@ -43,6 +45,13 @@ func (uc *RegisterUser) Execute(ctx context.Context, req dto.RegisterRequest) (*
 
 	// Persist
 	if err := uc.userRepo.Save(ctx, user); err != nil {
+		return nil, err
+	}
+
+	// Every user starts with one default location so stock/orders always
+	// have somewhere to live, even before they set up multi-location.
+	defaultLocation := entity.NewLocation(user.ID, "Local Central", "", "", true)
+	if err := uc.locationRepo.Save(ctx, defaultLocation); err != nil {
 		return nil, err
 	}
 

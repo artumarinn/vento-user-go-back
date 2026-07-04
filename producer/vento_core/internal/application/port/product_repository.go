@@ -15,4 +15,13 @@ type ProductRepository interface {
 	ListByUserID(ctx context.Context, userID string) ([]*entity.Product, error)
 	SaveBatch(ctx context.Context, products []*entity.Product) error
 	Search(ctx context.Context, userID string, query string, category string, limit int) ([]*entity.Product, error)
+	AdjustStock(ctx context.Context, productID string, userID string, delta float64) error
+	InsertStockMovement(ctx context.Context, movement *entity.StockMovement) error
+	// AdjustLocationStock upserts location_stock, applying delta to a
+	// product's quantity at a specific location. A no-op when locationID is
+	// empty (order/context without a resolved location).
+	AdjustLocationStock(ctx context.Context, locationID string, productID string, delta float64) error
+	// GetLocationStock returns the current quantity of a product at a
+	// specific location. Returns 0 when no row exists yet.
+	GetLocationStock(ctx context.Context, locationID string, productID string) (float64, error)
 }

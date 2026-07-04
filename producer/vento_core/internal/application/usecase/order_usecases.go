@@ -29,13 +29,69 @@ var validOrderStatuses = map[string]bool{
 // price is computed once by code, never recalculated retroactively).
 var ErrOrderLockedByPayment = errors.New("order items locked: payment already registered")
 
-type OrderUsecases struct {
-	repo        port.OrderRepository
-	serviceRepo port.ServiceRepository
+// ErrInsufficientStock indicates an order item requests more units of a
+// product than are currently available. Stock is never allowed to go
+// negative — the sale is rejected instead.
+var ErrInsufficientStock = errors.New("order: insufficient stock")
+
+// ErrInvalidOrderItems is returned when an order has no items or any item
+// has a quantity of zero or less.
+var ErrInvalidOrderItems = errors.New("order: must have at least one item with quantity > 0")
+
+// ErrLocationNotOwnedByUser is returned when a request supplies a
+// location_id that does not belong to the authenticated user. Prevents one
+// tenant from mutating another tenant's location_stock/movements ledger by
+// guessing/reusing a foreign location UUID.
+var ErrLocationNotOwnedByUser = errors.New("order: location does not belong to this user")
+
+func validateOrderItems(items []entity.OrderItem) error {
+	if len(items) == 0 {
+		return ErrInvalidOrderItems
+	}
+	for _, item := range items {
+		if item.Quantity <= 0 {
+			return ErrInvalidOrderItems
+		}
+	}
+	return nil
 }
 
-func NewOrderUsecases(repo port.OrderRepository, serviceRepo port.ServiceRepository) *OrderUsecases {
-	return &OrderUsecases{repo: repo, serviceRepo: serviceRepo}
+type OrderUsecases struct {
+	repo         port.OrderRepository
+	serviceRepo  port.ServiceRepository
+	productRepo  port.ProductRepository
+	insumoRepo   port.InsumoRepository
+	locationRepo port.LocationRepository
+}
+
+func NewOrderUsecases(repo port.OrderRepository, serviceRepo port.ServiceRepository, productRepo port.ProductRepository, insumoRepo port.InsumoRepository, locationRepo port.LocationRepository) *OrderUsecases {
+	return &OrderUsecases{repo: repo, serviceRepo: serviceRepo, productRepo: productRepo, insumoRepo: insumoRepo, locationRepo: locationRepo}
+}
+
+// resolveOwnedLocationID validates that a client-supplied location_id
+// belongs to userID, returning ErrLocationNotOwnedByUser otherwise. An empty
+// rawLocationID (order without a resolved location) is passed through
+// unchanged — callers such as SyncFromIA/internal flows may not have one.
+func (uc *OrderUsecases) resolveOwnedLocationID(ctx context.Context, userID string, rawLocationID *string) (string, error) {
+	if rawLocationID == nil || *rawLocationID == "" {
+		return "", nil
+	}
+	loc, err := uc.locationRepo.GetByID(ctx, *rawLocationID, userID)
+	if err != nil {
+		return "", err
+	}
+	if loc == nil {
+		return "", ErrLocationNotOwnedByUser
+	}
+	return loc.ID, nil
+}
+
+// isProductItem reports whether an order item represents a Product (as
+// opposed to a Service). Legacy orders never set Type, so the absence of
+// OrderItemTypeService combined with a non-empty ProductID is treated as a
+// product item.
+func isProductItem(item entity.OrderItem) bool {
+	return item.ProductID != "" && item.Type != entity.OrderItemTypeService
 }
 
 // priceServiceItems computes UnitPrice for each Service-type item via the
@@ -70,6 +126,329 @@ func (uc *OrderUsecases) priceServiceItems(ctx context.Context, userID string, i
 	return nil
 }
 
+// validateProductStock checks every product item against currently available
+// stock and fails fast (rejecting the whole sale) if any single item would
+// drive a product's stock below zero. No stock is touched here.
+func (uc *OrderUsecases) validateProductStock(ctx context.Context, userID string, items []entity.OrderItem) error {
+	for _, item := range items {
+		if !isProductItem(item) {
+			continue
+		}
+		product, err := uc.productRepo.GetByID(ctx, item.ProductID, userID)
+		if err != nil {
+			return err
+		}
+		if product == nil {
+			return fmt.Errorf("product not found: %s", item.ProductID)
+		}
+		if product.Stock < float64(item.Quantity) {
+			return fmt.Errorf("%w: %s", ErrInsufficientStock, product.Name)
+		}
+	}
+	return nil
+}
+
+// decrementProductStock applies a "sale" stock movement for every product
+// item in the order. Must only be called after the order itself has been
+// persisted successfully and after validateProductStock has passed.
+// locationID mirrors the movement into location_stock; empty when the order
+// has no resolved location (legacy/internal callers).
+func (uc *OrderUsecases) decrementProductStock(ctx context.Context, userID, orderID, locationID string, items []entity.OrderItem, now time.Time) error {
+	for _, item := range items {
+		if !isProductItem(item) {
+			continue
+		}
+		if err := uc.productRepo.AdjustStock(ctx, item.ProductID, userID, -float64(item.Quantity)); err != nil {
+			return err
+		}
+		if err := uc.productRepo.AdjustLocationStock(ctx, locationID, item.ProductID, -float64(item.Quantity)); err != nil {
+			return err
+		}
+		movement := &entity.StockMovement{
+			UserID:        userID,
+			ProductID:     item.ProductID,
+			LocationID:    locationID,
+			OrderID:       &orderID,
+			QuantityDelta: -float64(item.Quantity),
+			Reason:        "sale",
+			CreatedAt:     now,
+		}
+		if err := uc.productRepo.InsertStockMovement(ctx, movement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// restoreProductStock applies a stock movement that gives back units of
+// every product item in the order (cancellation/deletion path).
+func (uc *OrderUsecases) restoreProductStock(ctx context.Context, userID, orderID, locationID string, items []entity.OrderItem, reason string, now time.Time) error {
+	for _, item := range items {
+		if !isProductItem(item) {
+			continue
+		}
+		if err := uc.productRepo.AdjustStock(ctx, item.ProductID, userID, float64(item.Quantity)); err != nil {
+			return err
+		}
+		if err := uc.productRepo.AdjustLocationStock(ctx, locationID, item.ProductID, float64(item.Quantity)); err != nil {
+			return err
+		}
+		movement := &entity.StockMovement{
+			UserID:        userID,
+			ProductID:     item.ProductID,
+			LocationID:    locationID,
+			OrderID:       &orderID,
+			QuantityDelta: float64(item.Quantity),
+			Reason:        reason,
+			CreatedAt:     now,
+		}
+		if err := uc.productRepo.InsertStockMovement(ctx, movement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// productQuantities sums Quantity per ProductID across product-type items,
+// ignoring service items entirely.
+func productQuantities(items []entity.OrderItem) map[string]float64 {
+	qty := make(map[string]float64)
+	for _, item := range items {
+		if !isProductItem(item) {
+			continue
+		}
+		qty[item.ProductID] += float64(item.Quantity)
+	}
+	return qty
+}
+
+// applyProductStockDelta reconciles stock for an order edit: for each
+// product whose requested quantity changed between oldItems and newItems,
+// it validates (when the new quantity is higher) and applies an "adjustment"
+// stock movement for just the difference. Validation for every increased
+// product happens before any stock is touched, so a rejected edit never
+// partially adjusts stock.
+func (uc *OrderUsecases) applyProductStockDelta(ctx context.Context, userID, orderID, locationID string, oldItems, newItems []entity.OrderItem, now time.Time) error {
+	oldQty := productQuantities(oldItems)
+	newQty := productQuantities(newItems)
+
+	productIDs := make(map[string]struct{}, len(oldQty)+len(newQty))
+	for id := range oldQty {
+		productIDs[id] = struct{}{}
+	}
+	for id := range newQty {
+		productIDs[id] = struct{}{}
+	}
+
+	deltas := make(map[string]float64, len(productIDs))
+	for id := range productIDs {
+		delta := newQty[id] - oldQty[id]
+		if delta == 0 {
+			continue
+		}
+		if delta > 0 {
+			product, err := uc.productRepo.GetByID(ctx, id, userID)
+			if err != nil {
+				return err
+			}
+			if product == nil {
+				return fmt.Errorf("product not found: %s", id)
+			}
+			if product.Stock < delta {
+				return fmt.Errorf("%w: %s", ErrInsufficientStock, product.Name)
+			}
+		}
+		deltas[id] = delta
+	}
+
+	for id, delta := range deltas {
+		if err := uc.productRepo.AdjustStock(ctx, id, userID, -delta); err != nil {
+			return err
+		}
+		if err := uc.productRepo.AdjustLocationStock(ctx, locationID, id, -delta); err != nil {
+			return err
+		}
+		movement := &entity.StockMovement{
+			UserID:        userID,
+			ProductID:     id,
+			LocationID:    locationID,
+			OrderID:       &orderID,
+			QuantityDelta: -delta,
+			Reason:        "adjustment",
+			CreatedAt:     now,
+		}
+		if err := uc.productRepo.InsertStockMovement(ctx, movement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// serviceInsumoConsumption sums, per insumo_id, how many units a set of
+// order items would consume according to each Service's recipe. Only
+// service-type items are considered — products never consume insumos
+// directly.
+func (uc *OrderUsecases) serviceInsumoConsumption(ctx context.Context, items []entity.OrderItem) (map[string]float64, error) {
+	consumption := make(map[string]float64)
+	for _, item := range items {
+		if item.Type != entity.OrderItemTypeService {
+			continue
+		}
+		recipe, err := uc.serviceRepo.ListServiceInsumos(ctx, item.ServiceID)
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range recipe {
+			consumption[line.InsumoID] += line.QuantityPerUnit * float64(item.Quantity)
+		}
+	}
+	return consumption, nil
+}
+
+// validateInsumoStock checks every insumo consumed by the order's service
+// items against currently available stock and fails fast (rejecting the
+// whole sale) if any insumo would go negative. No stock is touched here.
+// An insumo with Stock == nil was never loaded with stock data and must
+// never block a sale.
+func (uc *OrderUsecases) validateInsumoStock(ctx context.Context, userID string, items []entity.OrderItem) error {
+	consumption, err := uc.serviceInsumoConsumption(ctx, items)
+	if err != nil {
+		return err
+	}
+	for insumoID, qty := range consumption {
+		insumo, err := uc.insumoRepo.GetByID(ctx, insumoID, userID)
+		if err != nil {
+			return err
+		}
+		if insumo == nil {
+			continue
+		}
+		if insumo.Stock != nil && *insumo.Stock < qty {
+			return fmt.Errorf("%w: insumo %s", ErrInsufficientStock, insumo.Name)
+		}
+	}
+	return nil
+}
+
+// decrementInsumoStock applies a "production" stock movement for every
+// insumo consumed by the order's service items. Must only be called after
+// the order itself has been persisted successfully and after
+// validateInsumoStock has passed.
+func (uc *OrderUsecases) decrementInsumoStock(ctx context.Context, userID, orderID, locationID string, items []entity.OrderItem, now time.Time) error {
+	consumption, err := uc.serviceInsumoConsumption(ctx, items)
+	if err != nil {
+		return err
+	}
+	for insumoID, qty := range consumption {
+		if qty == 0 {
+			continue
+		}
+		if err := uc.insumoRepo.AdjustStock(ctx, insumoID, userID, -qty); err != nil {
+			return err
+		}
+		if err := uc.insumoRepo.AdjustLocationInsumoStock(ctx, locationID, insumoID, -qty); err != nil {
+			return err
+		}
+		movement := &entity.InsumoMovement{
+			UserID: userID, InsumoID: insumoID, LocationID: locationID, OrderID: &orderID,
+			QuantityDelta: -qty, Reason: "production", CreatedAt: now,
+		}
+		if err := uc.insumoRepo.InsertInsumoMovement(ctx, movement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// restoreInsumoStock applies a stock movement that gives back units of
+// every insumo consumed by the order's service items (cancellation/deletion
+// path).
+func (uc *OrderUsecases) restoreInsumoStock(ctx context.Context, userID, orderID, locationID string, items []entity.OrderItem, reason string, now time.Time) error {
+	consumption, err := uc.serviceInsumoConsumption(ctx, items)
+	if err != nil {
+		return err
+	}
+	for insumoID, qty := range consumption {
+		if qty == 0 {
+			continue
+		}
+		if err := uc.insumoRepo.AdjustStock(ctx, insumoID, userID, qty); err != nil {
+			return err
+		}
+		if err := uc.insumoRepo.AdjustLocationInsumoStock(ctx, locationID, insumoID, qty); err != nil {
+			return err
+		}
+		movement := &entity.InsumoMovement{
+			UserID: userID, InsumoID: insumoID, LocationID: locationID, OrderID: &orderID,
+			QuantityDelta: qty, Reason: reason, CreatedAt: now,
+		}
+		if err := uc.insumoRepo.InsertInsumoMovement(ctx, movement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyInsumoStockDelta reconciles insumo stock for an order edit: for each
+// insumo whose total consumption changed between oldItems and newItems, it
+// validates (when consumption increases) and applies an "adjustment" stock
+// movement for just the difference. Validation for every increased insumo
+// happens before any stock is touched, so a rejected edit never partially
+// adjusts stock.
+func (uc *OrderUsecases) applyInsumoStockDelta(ctx context.Context, userID, orderID, locationID string, oldItems, newItems []entity.OrderItem, now time.Time) error {
+	oldConsumption, err := uc.serviceInsumoConsumption(ctx, oldItems)
+	if err != nil {
+		return err
+	}
+	newConsumption, err := uc.serviceInsumoConsumption(ctx, newItems)
+	if err != nil {
+		return err
+	}
+
+	insumoIDs := make(map[string]struct{}, len(oldConsumption)+len(newConsumption))
+	for id := range oldConsumption {
+		insumoIDs[id] = struct{}{}
+	}
+	for id := range newConsumption {
+		insumoIDs[id] = struct{}{}
+	}
+
+	deltas := make(map[string]float64, len(insumoIDs))
+	for id := range insumoIDs {
+		delta := newConsumption[id] - oldConsumption[id]
+		if delta == 0 {
+			continue
+		}
+		if delta > 0 {
+			insumo, err := uc.insumoRepo.GetByID(ctx, id, userID)
+			if err != nil {
+				return err
+			}
+			if insumo != nil && insumo.Stock != nil && *insumo.Stock < delta {
+				return fmt.Errorf("%w: insumo %s", ErrInsufficientStock, insumo.Name)
+			}
+		}
+		deltas[id] = delta
+	}
+
+	for id, delta := range deltas {
+		if err := uc.insumoRepo.AdjustStock(ctx, id, userID, -delta); err != nil {
+			return err
+		}
+		if err := uc.insumoRepo.AdjustLocationInsumoStock(ctx, locationID, id, -delta); err != nil {
+			return err
+		}
+		movement := &entity.InsumoMovement{
+			UserID: userID, InsumoID: id, LocationID: locationID, OrderID: &orderID,
+			QuantityDelta: -delta, Reason: "adjustment", CreatedAt: now,
+		}
+		if err := uc.insumoRepo.InsertInsumoMovement(ctx, movement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (uc *OrderUsecases) SyncFromIA(ctx context.Context, userID string, req dto.BatchCreateOrderRequest) error {
 	orders := make([]*entity.Order, len(req.Orders))
 	for i, oReq := range req.Orders {
@@ -91,8 +470,16 @@ func (uc *OrderUsecases) SyncFromIA(ctx context.Context, userID string, req dto.
 	return uc.repo.SaveBatch(ctx, orders)
 }
 
-func (uc *OrderUsecases) ListOrders(ctx context.Context, userID string) ([]dto.OrderResponse, error) {
-	orders, err := uc.repo.ListByUserID(ctx, userID)
+// ListOrders returns orders for a user. When locationID is empty, orders
+// across every location are returned (aggregate "Todo el negocio" view).
+func (uc *OrderUsecases) ListOrders(ctx context.Context, userID string, locationID string) ([]dto.OrderResponse, error) {
+	var orders []*entity.Order
+	var err error
+	if locationID != "" {
+		orders, err = uc.repo.ListByUserIDAndLocation(ctx, userID, locationID)
+	} else {
+		orders, err = uc.repo.ListByUserID(ctx, userID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +492,30 @@ func (uc *OrderUsecases) ListOrders(ctx context.Context, userID string) ([]dto.O
 }
 
 func (uc *OrderUsecases) CreateOrder(ctx context.Context, userID string, req dto.CreateOrderRequest) (dto.OrderResponse, error) {
+	if err := validateOrderItems(req.Items); err != nil {
+		return dto.OrderResponse{}, err
+	}
+
+	// A client-supplied location_id must belong to this tenant — validated
+	// up front, before any pricing/stock work, so a spoofed foreign location
+	// never touches another tenant's ledger.
+	locationID, err := uc.resolveOwnedLocationID(ctx, userID, req.LocationID)
+	if err != nil {
+		return dto.OrderResponse{}, err
+	}
+
 	if err := uc.priceServiceItems(ctx, userID, req.Items); err != nil {
+		return dto.OrderResponse{}, err
+	}
+
+	// Validate stock availability for every product item BEFORE creating the
+	// order — a sale is rejected in full if any item exceeds stock, never
+	// partially applied.
+	if err := uc.validateProductStock(ctx, userID, req.Items); err != nil {
+		return dto.OrderResponse{}, err
+	}
+
+	if err := uc.validateInsumoStock(ctx, userID, req.Items); err != nil {
 		return dto.OrderResponse{}, err
 	}
 
@@ -123,6 +533,7 @@ func (uc *OrderUsecases) CreateOrder(ctx context.Context, userID string, req dto
 	o := &entity.Order{
 		ID:            uuid.New().String(),
 		UserID:        userID,
+		LocationID:    locationID,
 		ClientID:      clientID,
 		ClientName:    req.ClientName,
 		Status:        entity.OrderStatus(req.Status),
@@ -142,7 +553,33 @@ func (uc *OrderUsecases) CreateOrder(ctx context.Context, userID string, req dto
 		return dto.OrderResponse{}, err
 	}
 
-	if req.PartialAmount != nil && *req.PartialAmount > 0 {
+	if err := uc.decrementProductStock(ctx, userID, o.ID, o.LocationID, o.Items, now); err != nil {
+		return dto.OrderResponse{}, err
+	}
+
+	if err := uc.decrementInsumoStock(ctx, userID, o.ID, o.LocationID, o.Items, now); err != nil {
+		return dto.OrderResponse{}, err
+	}
+
+	// A "paid"/"partial" payment_status at creation time must leave behind an
+	// actual OrderPayment record, otherwise amount_paid (derived by summing
+	// payments) silently diverges from the status label.
+	switch {
+	case req.PaymentStatus == "paid":
+		payment := &entity.OrderPayment{
+			OrderID:   o.ID,
+			UserID:    userID,
+			Amount:    total,
+			Method:    req.PaymentMethod,
+			Kind:      entity.OrderPaymentKindFull,
+			Status:    entity.OrderPaymentStatusPaid,
+			PaidAt:    now,
+			CreatedAt: now,
+		}
+		if err := uc.repo.InsertOrderPayment(ctx, payment); err != nil {
+			return dto.OrderResponse{}, err
+		}
+	case req.PartialAmount != nil && *req.PartialAmount > 0:
 		payment := &entity.OrderPayment{
 			OrderID:   o.ID,
 			UserID:    userID,
@@ -268,6 +705,15 @@ func (uc *OrderUsecases) UpdateOrderStatus(ctx context.Context, userID, orderID 
 		return dto.OrderResponse{}, err
 	}
 
+	if status == string(entity.StatusCancelled) {
+		if err := uc.restoreProductStock(ctx, userID, orderID, current.LocationID, current.Items, "cancellation", time.Now().UTC()); err != nil {
+			return dto.OrderResponse{}, err
+		}
+		if err := uc.restoreInsumoStock(ctx, userID, orderID, current.LocationID, current.Items, "cancellation", time.Now().UTC()); err != nil {
+			return dto.OrderResponse{}, err
+		}
+	}
+
 	o, err := uc.repo.GetByIDForUser(ctx, orderID, userID)
 	if err != nil {
 		return dto.OrderResponse{}, err
@@ -365,6 +811,10 @@ func (uc *OrderUsecases) UpdateOrder(ctx context.Context, userID, orderID string
 		o.Channel = *req.Channel
 	}
 	if req.Items != nil {
+		if err := validateOrderItems(*req.Items); err != nil {
+			return dto.OrderResponse{}, err
+		}
+
 		existingPayments, err := uc.repo.ListOrderPayments(ctx, orderID)
 		if err != nil {
 			return dto.OrderResponse{}, err
@@ -375,6 +825,14 @@ func (uc *OrderUsecases) UpdateOrder(ctx context.Context, userID, orderID string
 
 		newItems := *req.Items
 		if err := uc.priceServiceItems(ctx, userID, newItems); err != nil {
+			return dto.OrderResponse{}, err
+		}
+
+		if err := uc.applyProductStockDelta(ctx, userID, orderID, o.LocationID, o.Items, newItems, time.Now().UTC()); err != nil {
+			return dto.OrderResponse{}, err
+		}
+
+		if err := uc.applyInsumoStockDelta(ctx, userID, orderID, o.LocationID, o.Items, newItems, time.Now().UTC()); err != nil {
 			return dto.OrderResponse{}, err
 		}
 
@@ -413,6 +871,21 @@ func (uc *OrderUsecases) UpdateOrder(ctx context.Context, userID, orderID string
 }
 
 func (uc *OrderUsecases) DeleteOrder(ctx context.Context, userID, orderID string) error {
+	existing, err := uc.repo.GetByIDForUser(ctx, orderID, userID)
+	if err != nil {
+		return err
+	}
+	// Stock is only restored if the order was never cancelled — a cancelled
+	// order already got its stock back via UpdateOrderStatus, so restoring
+	// it again here would double-credit the product.
+	if existing != nil && existing.Status != entity.StatusCancelled {
+		if err := uc.restoreProductStock(ctx, userID, orderID, existing.LocationID, existing.Items, "cancellation", time.Now().UTC()); err != nil {
+			return err
+		}
+		if err := uc.restoreInsumoStock(ctx, userID, orderID, existing.LocationID, existing.Items, "cancellation", time.Now().UTC()); err != nil {
+			return err
+		}
+	}
 	return uc.repo.Delete(ctx, orderID, userID)
 }
 
@@ -424,6 +897,7 @@ func mapOrderEntityToResponse(o *entity.Order) dto.OrderResponse {
 
 	return dto.OrderResponse{
 		ID:            o.ID,
+		LocationID:    o.LocationID,
 		ClientID:      clientID,
 		ClientName:    o.ClientName,
 		Channel:       o.Channel,

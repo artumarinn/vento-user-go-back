@@ -45,6 +45,15 @@ func (f *fakeOrderRepository) ListByUserID(ctx context.Context, userID string) (
 	}
 	return res, nil
 }
+func (f *fakeOrderRepository) ListByUserIDAndLocation(ctx context.Context, userID string, locationID string) ([]*entity.Order, error) {
+	var res []*entity.Order
+	for _, o := range f.orders {
+		if o.LocationID == locationID {
+			res = append(res, o)
+		}
+	}
+	return res, nil
+}
 func (f *fakeOrderRepository) UpdateStatus(ctx context.Context, id string, userID string, status entity.OrderStatus) error {
 	if o, ok := f.orders[id]; ok {
 		o.Status = status
@@ -102,10 +111,14 @@ func (f *fakeOrderRepository) UpdatePaymentStatus(ctx context.Context, orderID s
 
 type fakeServiceRepository struct {
 	services map[string]*entity.Service
+	recipes  map[string][]entity.ServiceInsumoDetail
 }
 
 func newFakeServiceRepository() *fakeServiceRepository {
-	return &fakeServiceRepository{services: make(map[string]*entity.Service)}
+	return &fakeServiceRepository{
+		services: make(map[string]*entity.Service),
+		recipes:  make(map[string][]entity.ServiceInsumoDetail),
+	}
 }
 
 func (f *fakeServiceRepository) Save(ctx context.Context, service *entity.Service) error {
@@ -136,6 +149,89 @@ func (f *fakeServiceRepository) SaveBatch(ctx context.Context, services []*entit
 	}
 	return nil
 }
+func (f *fakeServiceRepository) SetServiceInsumos(ctx context.Context, serviceID string, insumos []entity.ServiceInsumo) error {
+	details := make([]entity.ServiceInsumoDetail, len(insumos))
+	for i, si := range insumos {
+		details[i] = entity.ServiceInsumoDetail{ServiceInsumo: si}
+	}
+	f.recipes[serviceID] = details
+	return nil
+}
+func (f *fakeServiceRepository) ListServiceInsumos(ctx context.Context, serviceID string) ([]entity.ServiceInsumoDetail, error) {
+	return f.recipes[serviceID], nil
+}
+
+// ---- fakeProductRepository ----
+
+type fakeProductRepository struct {
+	products      map[string]*entity.Product
+	movements     []entity.StockMovement
+	locationStock map[string]float64
+}
+
+func newFakeProductRepository() *fakeProductRepository {
+	return &fakeProductRepository{products: make(map[string]*entity.Product)}
+}
+
+func (f *fakeProductRepository) Save(ctx context.Context, product *entity.Product) error {
+	f.products[product.ID] = product
+	return nil
+}
+func (f *fakeProductRepository) Update(ctx context.Context, product *entity.Product) error {
+	f.products[product.ID] = product
+	return nil
+}
+func (f *fakeProductRepository) Delete(ctx context.Context, id string, userID string) error {
+	delete(f.products, id)
+	return nil
+}
+func (f *fakeProductRepository) GetByID(ctx context.Context, id string, userID string) (*entity.Product, error) {
+	return f.products[id], nil
+}
+func (f *fakeProductRepository) ListByUserID(ctx context.Context, userID string) ([]*entity.Product, error) {
+	var res []*entity.Product
+	for _, p := range f.products {
+		res = append(res, p)
+	}
+	return res, nil
+}
+func (f *fakeProductRepository) SaveBatch(ctx context.Context, products []*entity.Product) error {
+	for _, p := range products {
+		f.products[p.ID] = p
+	}
+	return nil
+}
+func (f *fakeProductRepository) Search(ctx context.Context, userID string, query string, category string, limit int) ([]*entity.Product, error) {
+	return nil, nil
+}
+func (f *fakeProductRepository) AdjustStock(ctx context.Context, productID string, userID string, delta float64) error {
+	p, ok := f.products[productID]
+	if !ok {
+		return nil
+	}
+	p.Stock += delta
+	return nil
+}
+func (f *fakeProductRepository) InsertStockMovement(ctx context.Context, movement *entity.StockMovement) error {
+	f.movements = append(f.movements, *movement)
+	return nil
+}
+func (f *fakeProductRepository) AdjustLocationStock(ctx context.Context, locationID string, productID string, delta float64) error {
+	if locationID == "" {
+		return nil
+	}
+	if f.locationStock == nil {
+		f.locationStock = make(map[string]float64)
+	}
+	f.locationStock[locationID+"|"+productID] += delta
+	return nil
+}
+func (f *fakeProductRepository) GetLocationStock(ctx context.Context, locationID string, productID string) (float64, error) {
+	if f.locationStock == nil {
+		return 0, nil
+	}
+	return f.locationStock[locationID+"|"+productID], nil
+}
 
 func printPrintingService() *entity.Service {
 	s := entity.Service(catalog.Service{
@@ -165,10 +261,12 @@ func printPrintingService() *entity.Service {
 func TestCreateOrder_ComputesServiceItemUnitPrice(t *testing.T) {
 	orderRepo := newFakeOrderRepository()
 	serviceRepo := newFakeServiceRepository()
+	productRepo := newFakeProductRepository()
+	insumoRepo := newFakeInsumoRepository()
 	svc := printPrintingService()
 	serviceRepo.services[svc.ID] = svc
 
-	uc := NewOrderUsecases(orderRepo, serviceRepo)
+	uc := NewOrderUsecases(orderRepo, serviceRepo, productRepo, insumoRepo, newFakeLocationRepository())
 
 	req := dto.CreateOrderRequest{
 		ClientName: "Cliente Test",
@@ -206,10 +304,12 @@ func TestCreateOrder_ComputesServiceItemUnitPrice(t *testing.T) {
 func TestCreateOrder_RejectsServiceItemWithEvaluatorError(t *testing.T) {
 	orderRepo := newFakeOrderRepository()
 	serviceRepo := newFakeServiceRepository()
+	productRepo := newFakeProductRepository()
+	insumoRepo := newFakeInsumoRepository()
 	svc := printPrintingService()
 	serviceRepo.services[svc.ID] = svc
 
-	uc := NewOrderUsecases(orderRepo, serviceRepo)
+	uc := NewOrderUsecases(orderRepo, serviceRepo, productRepo, insumoRepo, newFakeLocationRepository())
 
 	req := dto.CreateOrderRequest{
 		ClientName: "Cliente Test",
@@ -240,6 +340,8 @@ func TestCreateOrder_RejectsServiceItemWithEvaluatorError(t *testing.T) {
 func TestUpdateOrder_LockedAfterPaymentExists(t *testing.T) {
 	orderRepo := newFakeOrderRepository()
 	serviceRepo := newFakeServiceRepository()
+	productRepo := newFakeProductRepository()
+	insumoRepo := newFakeInsumoRepository()
 	svc := printPrintingService()
 	serviceRepo.services[svc.ID] = svc
 
@@ -256,7 +358,7 @@ func TestUpdateOrder_LockedAfterPaymentExists(t *testing.T) {
 		{OrderID: existing.ID, Amount: 100},
 	}
 
-	uc := NewOrderUsecases(orderRepo, serviceRepo)
+	uc := NewOrderUsecases(orderRepo, serviceRepo, productRepo, insumoRepo, newFakeLocationRepository())
 
 	newItems := []entity.OrderItem{
 		{
@@ -288,6 +390,8 @@ func TestUpdateOrder_LockedAfterPaymentExists(t *testing.T) {
 func TestUpdateOrder_RecomputesPriceWhenUnlocked(t *testing.T) {
 	orderRepo := newFakeOrderRepository()
 	serviceRepo := newFakeServiceRepository()
+	productRepo := newFakeProductRepository()
+	insumoRepo := newFakeInsumoRepository()
 	svc := printPrintingService()
 	serviceRepo.services[svc.ID] = svc
 
@@ -302,7 +406,7 @@ func TestUpdateOrder_RecomputesPriceWhenUnlocked(t *testing.T) {
 	orderRepo.orders[existing.ID] = existing
 	// no payments
 
-	uc := NewOrderUsecases(orderRepo, serviceRepo)
+	uc := NewOrderUsecases(orderRepo, serviceRepo, productRepo, insumoRepo, newFakeLocationRepository())
 
 	newItems := []entity.OrderItem{
 		{

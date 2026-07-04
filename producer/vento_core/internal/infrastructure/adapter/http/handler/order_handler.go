@@ -11,11 +11,12 @@ import (
 )
 
 type OrderHandler struct {
-	orderUC *usecase.OrderUsecases
+	orderUC    *usecase.OrderUsecases
+	locationUC *usecase.LocationUsecases
 }
 
-func NewOrderHandler(orderUC *usecase.OrderUsecases) *OrderHandler {
-	return &OrderHandler{orderUC: orderUC}
+func NewOrderHandler(orderUC *usecase.OrderUsecases, locationUC *usecase.LocationUsecases) *OrderHandler {
+	return &OrderHandler{orderUC: orderUC, locationUC: locationUC}
 }
 
 // orderErrorStatus maps known domain/pricing errors to their HTTP status,
@@ -28,14 +29,22 @@ func orderErrorStatus(err error) int {
 		errors.Is(err, usecase.ErrInvalidVariableOption),
 		errors.Is(err, usecase.ErrUnknownVariableName):
 		return http.StatusBadRequest
+	case errors.Is(err, usecase.ErrInsufficientStock):
+		return http.StatusBadRequest
+	case errors.Is(err, usecase.ErrInvalidOrderItems):
+		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError
 	}
 }
 
+// List handles GET /api/v1/orders. An optional ?location_id= query param
+// filters to a single location; omitted returns orders across every
+// location (aggregate "Todo el negocio" view).
 func (h *OrderHandler) List(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
-	orders, err := h.orderUC.ListOrders(c.Request.Context(), userID)
+	locationID := c.Query("location_id")
+	orders, err := h.orderUC.ListOrders(c.Request.Context(), userID, locationID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -49,6 +58,17 @@ func (h *OrderHandler) Create(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// An order always belongs to a location — default to the user's default
+	// location when the client omits it.
+	if req.LocationID == nil || *req.LocationID == "" {
+		defaultLocation, err := h.locationUC.GetOrCreateDefaultLocation(c.Request.Context(), userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		req.LocationID = &defaultLocation.ID
 	}
 
 	order, err := h.orderUC.CreateOrder(c.Request.Context(), userID, req)

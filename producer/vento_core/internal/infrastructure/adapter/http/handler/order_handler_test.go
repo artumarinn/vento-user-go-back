@@ -36,6 +36,9 @@ func (f *fakeOrderRepo) GetByIDForUser(ctx context.Context, id string, userID st
 func (f *fakeOrderRepo) ListByUserID(ctx context.Context, u string) ([]*entity.Order, error) {
 	return f.listByUserIDFunc(ctx, u)
 }
+func (f *fakeOrderRepo) ListByUserIDAndLocation(ctx context.Context, u string, locationID string) ([]*entity.Order, error) {
+	return f.listByUserIDFunc(ctx, u)
+}
 func (f *fakeOrderRepo) UpdateStatus(ctx context.Context, id string, userID string, s entity.OrderStatus) error {
 	return f.updateStatusFunc(ctx, id, userID, s)
 }
@@ -89,6 +92,69 @@ func (f *fakeServiceRepo) ListByUserID(ctx context.Context, userID string) ([]*e
 func (f *fakeServiceRepo) SaveBatch(ctx context.Context, services []*entity.Service) error {
 	return nil
 }
+func (f *fakeServiceRepo) SetServiceInsumos(ctx context.Context, serviceID string, insumos []entity.ServiceInsumo) error {
+	return nil
+}
+func (f *fakeServiceRepo) ListServiceInsumos(ctx context.Context, serviceID string) ([]entity.ServiceInsumoDetail, error) {
+	return nil, nil
+}
+
+type fakeInsumoRepo struct {
+	listByUserIDFunc func(ctx context.Context, userID string) ([]*entity.Insumo, error)
+}
+
+func (f *fakeInsumoRepo) Save(ctx context.Context, insumo *entity.Insumo) error   { return nil }
+func (f *fakeInsumoRepo) Update(ctx context.Context, insumo *entity.Insumo) error { return nil }
+func (f *fakeInsumoRepo) Delete(ctx context.Context, id string, userID string) error {
+	return nil
+}
+func (f *fakeInsumoRepo) GetByID(ctx context.Context, id string, userID string) (*entity.Insumo, error) {
+	return nil, nil
+}
+func (f *fakeInsumoRepo) ListByUserID(ctx context.Context, userID string) ([]*entity.Insumo, error) {
+	if f.listByUserIDFunc != nil {
+		return f.listByUserIDFunc(ctx, userID)
+	}
+	return nil, nil
+}
+func (f *fakeInsumoRepo) SaveBatch(ctx context.Context, insumos []*entity.Insumo) error {
+	return nil
+}
+func (f *fakeInsumoRepo) AdjustStock(ctx context.Context, insumoID string, userID string, delta float64) error {
+	return nil
+}
+func (f *fakeInsumoRepo) InsertInsumoMovement(ctx context.Context, movement *entity.InsumoMovement) error {
+	return nil
+}
+func (f *fakeInsumoRepo) AdjustLocationInsumoStock(ctx context.Context, locationID string, insumoID string, delta float64) error {
+	return nil
+}
+func (f *fakeInsumoRepo) GetLocationInsumoStock(ctx context.Context, locationID string, insumoID string) (float64, error) {
+	return 0, nil
+}
+
+type fakeLocationRepo struct{}
+
+func (f *fakeLocationRepo) Save(ctx context.Context, l *entity.Location) error   { return nil }
+func (f *fakeLocationRepo) Update(ctx context.Context, l *entity.Location) error { return nil }
+func (f *fakeLocationRepo) Delete(ctx context.Context, id string, userID string) error {
+	return nil
+}
+func (f *fakeLocationRepo) GetByID(ctx context.Context, id string, userID string) (*entity.Location, error) {
+	return nil, nil
+}
+func (f *fakeLocationRepo) ListByUserID(ctx context.Context, userID string) ([]*entity.Location, error) {
+	return nil, nil
+}
+func (f *fakeLocationRepo) GetDefault(ctx context.Context, userID string) (*entity.Location, error) {
+	return &entity.Location{ID: "loc-default", UserID: userID, Name: "Local Central", IsDefault: true}, nil
+}
+func (f *fakeLocationRepo) CountByUserID(ctx context.Context, userID string) (int, error) {
+	return 1, nil
+}
+func (f *fakeLocationRepo) UnsetDefault(ctx context.Context, userID string, exceptID string) error {
+	return nil
+}
 
 func TestOrderHandler_List(t *testing.T) {
 	t.Run("Happy Path", func(t *testing.T) {
@@ -97,8 +163,9 @@ func TestOrderHandler_List(t *testing.T) {
 				return []*entity.Order{}, nil
 			},
 		}
-		uc := usecase.NewOrderUsecases(repo, &fakeServiceRepo{})
-		h := handler.NewOrderHandler(uc)
+		uc := usecase.NewOrderUsecases(repo, &fakeServiceRepo{}, &fakeProductRepo{}, &fakeInsumoRepo{}, &fakeLocationRepo{})
+		locationUC := usecase.NewLocationUsecases(&fakeLocationRepo{})
+		h := handler.NewOrderHandler(uc, locationUC)
 		r, v1 := setupTestRouter()
 		v1.GET("/orders", func(c *gin.Context) {
 			c.Set("userID", "user-123")

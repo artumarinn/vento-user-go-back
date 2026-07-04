@@ -13,6 +13,7 @@ import (
 type orderRow struct {
 	ID                    string          `db:"id"`
 	UserID                string          `db:"user_id"`
+	LocationID            sql.NullString  `db:"location_id"`
 	ClientID              string          `db:"client_id"`
 	ClientName            string          `db:"client_name"`
 	ConversationID        string          `db:"conversation_id"`
@@ -39,6 +40,7 @@ func (row orderRow) toEntity() *entity.Order {
 	o := &entity.Order{
 		ID:             row.ID,
 		UserID:         row.UserID,
+		LocationID:     row.LocationID.String,
 		ClientID:       row.ClientID,
 		ClientName:     row.ClientName,
 		ConversationID: row.ConversationID,
@@ -95,14 +97,29 @@ func (r *PostgresOrderRepository) ListByUserID(ctx context.Context, userID strin
 	return orders, nil
 }
 
+func (r *PostgresOrderRepository) ListByUserIDAndLocation(ctx context.Context, userID string, locationID string) ([]*entity.Order, error) {
+	var rows []orderRow
+	query := `SELECT * FROM orders WHERE user_id = $1 AND location_id = $2 ORDER BY created_at DESC`
+	err := r.db.SelectContext(ctx, &rows, query, userID, locationID)
+	if err != nil {
+		return nil, err
+	}
+
+	orders := make([]*entity.Order, len(rows))
+	for i, row := range rows {
+		orders[i] = row.toEntity()
+	}
+	return orders, nil
+}
+
 func (r *PostgresOrderRepository) Save(ctx context.Context, o *entity.Order) error {
 	itemsJSON, _ := json.Marshal(o.Items)
 	query := `
-		INSERT INTO orders (id, user_id, client_id, client_name, conversation_id, status, total, items, channel, delivery_date, payment_method, payment_status, partial_amount, notes, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		INSERT INTO orders (id, user_id, location_id, client_id, client_name, conversation_id, status, total, items, channel, delivery_date, payment_method, payment_status, partial_amount, notes, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 	`
 	_, err := r.db.ExecContext(ctx, query,
-		o.ID, o.UserID, o.ClientID, o.ClientName, o.ConversationID, string(o.Status), o.Total, itemsJSON,
+		o.ID, o.UserID, nullableUUID(o.LocationID), o.ClientID, o.ClientName, o.ConversationID, string(o.Status), o.Total, itemsJSON,
 		o.Channel, o.DeliveryDate, o.PaymentMethod, o.PaymentStatus, o.PartialAmount, o.Notes, o.CreatedAt, o.UpdatedAt,
 	)
 	if err != nil {

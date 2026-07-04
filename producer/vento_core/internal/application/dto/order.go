@@ -20,6 +20,7 @@ type BatchCreateOrderRequest struct {
 }
 
 type CreateOrderRequest struct {
+	LocationID    *string            `json:"location_id"`
 	ClientID      *string            `json:"client_id"`
 	ClientName    string             `json:"client_name"`
 	Channel       string             `json:"channel"`
@@ -47,6 +48,7 @@ type UpdateOrderRequest struct {
 
 type OrderResponse struct {
 	ID            string             `json:"id"`
+	LocationID    string             `json:"location_id"`
 	ClientID      *string            `json:"client_id"`
 	ClientName    string             `json:"client_name"`
 	Channel       string             `json:"channel"`

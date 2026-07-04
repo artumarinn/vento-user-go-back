@@ -26,12 +26,13 @@ const (
 )
 
 type OrderItemVariable struct {
-	Name        string   `json:"name"`
-	Type        string   `json:"type"`
-	OptionValue *string  `json:"option_value,omitempty"`
-	NumberValue *float64 `json:"number_value,omitempty"`
-	TextValue   *string  `json:"text_value,omitempty"`
-	PricedValue *float64 `json:"priced_value,omitempty"`
+	Name         string   `json:"name"`
+	Type         string   `json:"type"`
+	OptionValue  *string  `json:"option_value,omitempty"`
+	NumberValue  *float64 `json:"number_value,omitempty"`
+	TextValue    *string  `json:"text_value,omitempty"`
+	BooleanValue *bool    `json:"boolean_value,omitempty"`
+	PricedValue  *float64 `json:"priced_value,omitempty"`
 }
 
 type OrderItem struct {
@@ -47,6 +48,7 @@ type OrderItem struct {
 type Order struct {
 	ID                    string      `json:"id"`
 	UserID                string      `json:"user_id"`
+	LocationID            string      `json:"location_id"`
 	ClientID              string      `json:"client_id"`
 	ClientName            string      `json:"client_name"`
 	ConversationID        string      `json:"conversation_id"`

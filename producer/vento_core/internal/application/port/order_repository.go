@@ -10,6 +10,10 @@ type OrderRepository interface {
 	GetByID(ctx context.Context, id string) (*entity.Order, error)
 	GetByIDForUser(ctx context.Context, id string, userID string) (*entity.Order, error)
 	ListByUserID(ctx context.Context, userID string) ([]*entity.Order, error)
+	// ListByUserIDAndLocation filters orders to a single location. Used when
+	// the caller passes ?location_id= — omitted means aggregate across
+	// locations (ListByUserID).
+	ListByUserIDAndLocation(ctx context.Context, userID string, locationID string) ([]*entity.Order, error)
 	UpdateStatus(ctx context.Context, id string, userID string, status entity.OrderStatus) error
 	SaveBatch(ctx context.Context, orders []*entity.Order) error
 	Update(ctx context.Context, order *entity.Order) error
