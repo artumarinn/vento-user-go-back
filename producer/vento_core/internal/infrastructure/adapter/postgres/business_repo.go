@@ -30,15 +30,16 @@ func (r *BusinessRepo) Save(ctx context.Context, profile *entity.BusinessProfile
 	}
 
 	query := `
-		INSERT INTO business_profiles (user_id, business_name, description, industry, tone, currency, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		INSERT INTO business_profiles (user_id, business_name, description, industry, tone, currency, default_agent_mode, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
 		ON CONFLICT (user_id) DO UPDATE SET
-			business_name = EXCLUDED.business_name,
-			description   = EXCLUDED.description,
-			industry      = EXCLUDED.industry,
-			tone          = EXCLUDED.tone,
-			currency      = EXCLUDED.currency,
-			updated_at    = NOW()
+			business_name      = EXCLUDED.business_name,
+			description        = EXCLUDED.description,
+			industry           = EXCLUDED.industry,
+			tone               = EXCLUDED.tone,
+			currency           = EXCLUDED.currency,
+			default_agent_mode = EXCLUDED.default_agent_mode,
+			updated_at         = NOW()
 		RETURNING id, created_at, updated_at
 	`
 	err = tx.QueryRowContext(ctx, query,
@@ -48,6 +49,7 @@ func (r *BusinessRepo) Save(ctx context.Context, profile *entity.BusinessProfile
 		profile.Industry,
 		profile.Tone,
 		profile.Currency,
+		profile.DefaultAgentMode,
 	).Scan(&profile.ID, &profile.CreatedAt, &profile.UpdatedAt)
 	if err != nil {
 		return err
@@ -58,7 +60,7 @@ func (r *BusinessRepo) Save(ctx context.Context, profile *entity.BusinessProfile
 
 func (r *BusinessRepo) GetByUserID(ctx context.Context, userID string) (*entity.BusinessProfile, error) {
 	var profile entity.BusinessProfile
-	query := `SELECT id, user_id, business_name, description, industry, tone, currency, created_at, updated_at FROM business_profiles WHERE user_id = $1`
+	query := `SELECT id, user_id, business_name, description, industry, tone, currency, default_agent_mode, created_at, updated_at FROM business_profiles WHERE user_id = $1`
 	err := r.db.GetContext(ctx, &profile, query, userID)
 	if err == sql.ErrNoRows {
 		return nil, nil

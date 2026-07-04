@@ -89,15 +89,16 @@ CREATE INDEX IF NOT EXISTS idx_products_user_category    ON products(user_id, ca
 
 const createBusinessProfilesTable = `
 CREATE TABLE IF NOT EXISTS business_profiles (
-    id            SERIAL       PRIMARY KEY,
-    user_id       VARCHAR(36)  NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-    business_name TEXT         NOT NULL DEFAULT '',
-    description   TEXT         NOT NULL DEFAULT '',
-    industry      TEXT         NOT NULL DEFAULT '',
-    tone          TEXT         NOT NULL DEFAULT 'profesional',
-    currency      TEXT         NOT NULL DEFAULT 'ARS',
-    created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    id                 SERIAL       PRIMARY KEY,
+    user_id            VARCHAR(36)  NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    business_name      TEXT         NOT NULL DEFAULT '',
+    description        TEXT         NOT NULL DEFAULT '',
+    industry           TEXT         NOT NULL DEFAULT '',
+    tone               TEXT         NOT NULL DEFAULT 'profesional',
+    currency           TEXT         NOT NULL DEFAULT 'ARS',
+    default_agent_mode TEXT         NOT NULL DEFAULT 'autonomous',
+    created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_business_profiles_user_id ON business_profiles(user_id);
@@ -582,6 +583,10 @@ FROM locations l
 WHERE l.user_id = im.user_id AND l.is_default = TRUE AND im.location_id IS NULL;
 `
 
+const addDefaultAgentModeColumn = `
+ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS default_agent_mode TEXT NOT NULL DEFAULT 'autonomous';
+`
+
 // NewConnection opens a PostgreSQL connection pool and runs all migrations idempotently.
 func NewConnection(dsn string) (*sqlx.DB, error) {
 	db, err := sqlx.Connect("postgres", dsn)
@@ -620,6 +625,7 @@ func NewConnection(dsn string) (*sqlx.DB, error) {
 		{"expenses", createExpensesTable},
 		{"locations", createLocationsTable},
 		{"location_stock", createLocationStockTables},
+		{"default_agent_mode", addDefaultAgentModeColumn},
 	}
 
 	for _, m := range migrations {
