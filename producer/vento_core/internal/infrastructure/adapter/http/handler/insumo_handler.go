@@ -19,7 +19,8 @@ func NewInsumoHandler(insumoUC *usecase.InsumoUsecases) *InsumoHandler {
 
 func (h *InsumoHandler) List(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
-	insumos, err := h.insumoUC.ListInsumos(c.Request.Context(), userID)
+	locationID := c.Query("location_id")
+	insumos, err := h.insumoUC.ListInsumos(c.Request.Context(), userID, locationID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

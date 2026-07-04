@@ -124,6 +124,53 @@ func (r *PostgresInsumoRepository) SaveBatch(ctx context.Context, insumos []*ent
 	return tx.Commit()
 }
 
+func (r *PostgresInsumoRepository) AdjustStock(ctx context.Context, insumoID string, userID string, delta float64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE insumos SET stock = COALESCE(stock, 0) + $1, updated_at = $2 WHERE id = $3 AND user_id = $4`,
+		delta, time.Now().UTC(), insumoID, userID,
+	)
+	return err
+}
+
+func (r *PostgresInsumoRepository) InsertInsumoMovement(ctx context.Context, movement *entity.InsumoMovement) error {
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO insumo_movements (id, user_id, insumo_id, location_id, order_id, quantity_delta, reason, created_at)
+		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)`,
+		movement.UserID, movement.InsumoID, nullableUUID(movement.LocationID), movement.OrderID, movement.QuantityDelta, movement.Reason, movement.CreatedAt,
+	)
+	return err
+}
+
+func (r *PostgresInsumoRepository) AdjustLocationInsumoStock(ctx context.Context, locationID string, insumoID string, delta float64) error {
+	if locationID == "" {
+		return nil
+	}
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO location_insumo_stock (location_id, insumo_id, quantity, updated_at)
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (location_id, insumo_id) DO UPDATE SET
+			quantity = location_insumo_stock.quantity + $3,
+			updated_at = $4`,
+		locationID, insumoID, delta, time.Now().UTC(),
+	)
+	return err
+}
+
+func (r *PostgresInsumoRepository) GetLocationInsumoStock(ctx context.Context, locationID string, insumoID string) (float64, error) {
+	var quantity float64
+	err := r.db.GetContext(ctx, &quantity,
+		`SELECT quantity FROM location_insumo_stock WHERE location_id = $1 AND insumo_id = $2`,
+		locationID, insumoID,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return quantity, nil
+}
+
 func mapInsumoRowToEntity(row insumoRow) *entity.Insumo {
 	stock := row.Stock
 	price := row.Price
