@@ -13,7 +13,7 @@ import (
 )
 
 // NewRouter creates and configures the Gin router with all routes.
-func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, insumoHandler *handler.InsumoHandler, serviceHandler *handler.ServiceHandler, paymentHandler *handler.PaymentHandler, orderHandler *handler.OrderHandler, metaHandler *handler.MetaHandler, businessHandler *handler.BusinessHandler, syncJobHandler *handler.SyncJobHandler, toolHandler *handler.ToolHandler, tagHandler *handler.TagHandler, authService port.AuthService, internalToken string, clientHandler *handler.ClientHandler) *gin.Engine {
+func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.ProductHandler, insumoHandler *handler.InsumoHandler, serviceHandler *handler.ServiceHandler, paymentHandler *handler.PaymentHandler, orderHandler *handler.OrderHandler, metaHandler *handler.MetaHandler, businessHandler *handler.BusinessHandler, syncJobHandler *handler.SyncJobHandler, toolHandler *handler.ToolHandler, businessToolHandler *handler.BusinessToolHandler, tagHandler *handler.TagHandler, authService port.AuthService, internalToken string, clientHandler *handler.ClientHandler, expenseHandler *handler.ExpenseHandler, metricsHandler *handler.MetricsHandler, locationHandler *handler.LocationHandler, integrationsHandler *handler.IntegrationsHandler) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
@@ -101,6 +101,10 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 			internal.GET("/tools/products/:productId/stock", toolHandler.GetStock)
 			internal.GET("/tools/products/:productId", toolHandler.GetProductDetails)
 			internal.POST("/tools/products/search", toolHandler.SearchProducts)
+			internal.GET("/tools/orders", businessToolHandler.GetOrders)
+			internal.GET("/tools/metrics", businessToolHandler.GetMetrics)
+			internal.GET("/tools/clients", businessToolHandler.GetClients)
+			internal.GET("/tools/insumos", businessToolHandler.GetInsumos)
 
 			// Sync Jobs
 			internal.POST("/sync-jobs", syncJobHandler.CreateJob)
@@ -142,6 +146,7 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 			services.GET("", serviceHandler.List)
 			services.POST("", serviceHandler.Create)
 			services.POST("/batch", serviceHandler.CreateBatch)
+			services.POST("/preview-price", serviceHandler.PreviewPriceDraft)
 			services.PUT("/:id", serviceHandler.Update)
 			services.DELETE("/:id", serviceHandler.Delete)
 			services.POST("/:id/price-preview", serviceHandler.PricePreview)
@@ -206,6 +211,35 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 			tagGroup.GET("", tagHandler.List)
 			tagGroup.POST("", tagHandler.Create)
 			tagGroup.DELETE("/:id", tagHandler.Delete)
+		}
+
+		expenseGroup := v1.Group("/expenses")
+		expenseGroup.Use(middleware.AuthMiddleware(authService))
+		{
+			expenseGroup.GET("", expenseHandler.List)
+			expenseGroup.POST("", expenseHandler.Create)
+			expenseGroup.DELETE("/:id", expenseHandler.Delete)
+		}
+
+		metricsGroup := v1.Group("/metrics")
+		metricsGroup.Use(middleware.AuthMiddleware(authService))
+		{
+			metricsGroup.GET("", metricsHandler.Get)
+		}
+
+		locationGroup := v1.Group("/locations")
+		locationGroup.Use(middleware.AuthMiddleware(authService))
+		{
+			locationGroup.GET("", locationHandler.List)
+			locationGroup.POST("", locationHandler.Create)
+			locationGroup.PUT("/:id", locationHandler.Update)
+			locationGroup.DELETE("/:id", locationHandler.Delete)
+		}
+
+		integrationsGroup := v1.Group("/integrations")
+		integrationsGroup.Use(middleware.AuthMiddleware(authService))
+		{
+			integrationsGroup.GET("/status", integrationsHandler.GetStatus)
 		}
 	}
 

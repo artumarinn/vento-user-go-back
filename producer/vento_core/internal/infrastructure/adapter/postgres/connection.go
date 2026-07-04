@@ -8,6 +8,8 @@ import (
 	_ "github.com/lib/pq"
 )
 
+const createUnaccentExtension = `CREATE EXTENSION IF NOT EXISTS unaccent;`
+
 const createUsersTable = `
 CREATE TABLE IF NOT EXISTS users (
     id         VARCHAR(36)  PRIMARY KEY,
@@ -334,6 +336,70 @@ CREATE INDEX IF NOT EXISTS idx_webhook_events_received_at ON webhook_events(rece
 CREATE INDEX IF NOT EXISTS idx_webhook_events_source      ON webhook_events(source);
 `
 
+const createInsumosTable = `
+CREATE TABLE IF NOT EXISTS insumos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    category TEXT,
+    stock DECIMAL DEFAULT 0,
+    stock_unit TEXT DEFAULT 'u',
+    price DECIMAL DEFAULT 0,
+    supplier TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_insumos_user_id ON insumos(user_id);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'update_insumos_updated_at'
+    ) THEN
+        CREATE TRIGGER update_insumos_updated_at
+        BEFORE UPDATE ON insumos
+        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
+`
+
+const createTagsTable = `
+CREATE TABLE IF NOT EXISTS tags (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '#9CA3AF',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, label)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tags_user_id ON tags(user_id);
+
+CREATE TABLE IF NOT EXISTS insumo_tags (
+    insumo_id UUID NOT NULL REFERENCES insumos(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (insumo_id, tag_id)
+);
+`
+
+const createProductTagsTable = `
+CREATE TABLE IF NOT EXISTS product_tags (
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (product_id, tag_id)
+);
+`
+
+const createServiceTagsTable = `
+CREATE TABLE IF NOT EXISTS service_tags (
+    service_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (service_id, tag_id)
+);
+`
+
 const createServicesTable = `
 CREATE TABLE IF NOT EXISTS services (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -378,6 +444,144 @@ CREATE TABLE IF NOT EXISTS password_resets (
 CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token);
 `
 
+const createStockMovementsTable = `
+CREATE TABLE IF NOT EXISTS stock_movements (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    order_id UUID,
+    quantity_delta NUMERIC NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_movements_product_id ON stock_movements(product_id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_user_id ON stock_movements(user_id);
+`
+
+const createServiceInsumosTable = `
+CREATE TABLE IF NOT EXISTS service_insumos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    service_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+    insumo_id UUID NOT NULL REFERENCES insumos(id) ON DELETE CASCADE,
+    quantity_per_unit NUMERIC NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(service_id, insumo_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_insumos_service_id ON service_insumos(service_id);
+`
+
+const createInsumoMovementsTable = `
+CREATE TABLE IF NOT EXISTS insumo_movements (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    insumo_id UUID NOT NULL REFERENCES insumos(id) ON DELETE CASCADE,
+    order_id UUID,
+    quantity_delta NUMERIC NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_insumo_movements_insumo_id ON insumo_movements(insumo_id);
+`
+
+const createExpensesTable = `
+CREATE TABLE IF NOT EXISTS expenses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    concept TEXT NOT NULL,
+    category TEXT,
+    amount NUMERIC NOT NULL,
+    method TEXT,
+    paid_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_expenses_user_id ON expenses(user_id);
+`
+
+const createLocationsTable = `
+CREATE TABLE IF NOT EXISTS locations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    address TEXT,
+    phone TEXT,
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_locations_user_id ON locations(user_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_locations_one_default_per_user
+    ON locations(user_id) WHERE is_default;
+
+INSERT INTO locations (id, user_id, name, is_default, created_at)
+SELECT gen_random_uuid(), u.id, 'Local Central', TRUE, CURRENT_TIMESTAMP
+FROM users u
+WHERE NOT EXISTS (
+    SELECT 1 FROM locations l WHERE l.user_id = u.id
+);
+`
+
+const createLocationStockTables = `
+CREATE TABLE IF NOT EXISTS location_stock (
+    location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+    product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    quantity DECIMAL NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (location_id, product_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_location_stock_product_id ON location_stock(product_id);
+
+CREATE TABLE IF NOT EXISTS location_insumo_stock (
+    location_id UUID NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+    insumo_id UUID NOT NULL REFERENCES insumos(id) ON DELETE CASCADE,
+    quantity DECIMAL NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (location_id, insumo_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_location_insumo_stock_insumo_id ON location_insumo_stock(insumo_id);
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES locations(id);
+ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES locations(id);
+ALTER TABLE insumo_movements ADD COLUMN IF NOT EXISTS location_id UUID REFERENCES locations(id);
+
+CREATE INDEX IF NOT EXISTS idx_orders_location_id ON orders(location_id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_location_id ON stock_movements(location_id);
+CREATE INDEX IF NOT EXISTS idx_insumo_movements_location_id ON insumo_movements(location_id);
+
+INSERT INTO location_stock (location_id, product_id, quantity)
+SELECT l.id, p.id, p.stock
+FROM products p
+JOIN locations l ON l.user_id = p.user_id AND l.is_default = TRUE
+ON CONFLICT (location_id, product_id) DO NOTHING;
+
+INSERT INTO location_insumo_stock (location_id, insumo_id, quantity)
+SELECT l.id, i.id, COALESCE(i.stock, 0)
+FROM insumos i
+JOIN locations l ON l.user_id = i.user_id AND l.is_default = TRUE
+ON CONFLICT (location_id, insumo_id) DO NOTHING;
+
+UPDATE orders o
+SET location_id = l.id
+FROM locations l
+WHERE l.user_id = o.user_id AND l.is_default = TRUE AND o.location_id IS NULL;
+
+UPDATE stock_movements sm
+SET location_id = l.id
+FROM locations l
+WHERE l.user_id = sm.user_id AND l.is_default = TRUE AND sm.location_id IS NULL;
+
+UPDATE insumo_movements im
+SET location_id = l.id
+FROM locations l
+WHERE l.user_id = im.user_id AND l.is_default = TRUE AND im.location_id IS NULL;
+`
+
 // NewConnection opens a PostgreSQL connection pool and runs all migrations idempotently.
 func NewConnection(dsn string) (*sqlx.DB, error) {
 	db, err := sqlx.Connect("postgres", dsn)
@@ -392,6 +596,7 @@ func NewConnection(dsn string) (*sqlx.DB, error) {
 		name string
 		sql  string
 	}{
+		{"unaccent", createUnaccentExtension},
 		{"users", createUsersTable},
 		{"products", createProductsTable},
 		{"business_profiles", createBusinessProfilesTable},
@@ -401,14 +606,32 @@ func NewConnection(dsn string) (*sqlx.DB, error) {
 		{"order_status_history", createOrderStatusHistoryTable},
 		{"order_payments", createOrderPaymentsTable},
 		{"clients", createClientsTable},
+		{"insumos", createInsumosTable},
+		{"tags", createTagsTable},
+		{"product_tags", createProductTagsTable},
 		{"services", createServicesTable},
+		{"service_tags", createServiceTagsTable},
 		{"sync_jobs", createSyncJobsTable},
 		{"webhook_events", createWebhookEventsTable},
 		{"password_resets", createPasswordResetsTable},
+		{"stock_movements", createStockMovementsTable},
+		{"service_insumos", createServiceInsumosTable},
+		{"insumo_movements", createInsumoMovementsTable},
+		{"expenses", createExpensesTable},
+		{"locations", createLocationsTable},
+		{"location_stock", createLocationStockTables},
 	}
 
 	for _, m := range migrations {
 		if _, err := db.Exec(m.sql); err != nil {
+			// The unaccent extension may require superuser privileges the app's
+			// DB role doesn't have on some managed Postgres providers. Product
+			// search degrades gracefully to plain ILIKE in that case (see
+			// PostgresProductRepository.Search), so don't fail startup over it.
+			if m.name == "unaccent" {
+				log.Printf("⚠️  could not create unaccent extension (search will fall back to plain ILIKE): %v", err)
+				continue
+			}
 			return nil, fmt.Errorf("migration %q failed: %w", m.name, err)
 		}
 	}
