@@ -81,3 +81,30 @@ type PreviewPriceResponse struct {
 	UnitPrice float64 `json:"unit_price"`
 	LineTotal float64 `json:"line_total"`
 }
+
+// ServiceSearchResult is the customer-safe subset of a Service returned by
+// the AI agent's search_services tool — never the formula or insumo recipe.
+type ServiceSearchResult struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	MinimumLeadTime int    `json:"minimum_lead_time"`
+}
+
+// ServiceVariableOption is the customer-safe subset of a VariableOption —
+// never unit_cost, which reveals internal pricing structure.
+type ServiceVariableOption struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// ServiceVariableResponse is the customer-safe subset of a
+// catalog.VariableDefinition returned by the AI agent's get_service_variables
+// tool — never unit_cost or anything formula-related.
+type ServiceVariableResponse struct {
+	Name     string                  `json:"name"`
+	Label    string                  `json:"label"`
+	Type     string                  `json:"type"`
+	Unit     string                  `json:"unit,omitempty"`
+	Options  []ServiceVariableOption `json:"options,omitempty"`
+	Required bool                    `json:"required"`
+}

@@ -12,7 +12,7 @@ import (
 func TestPreviewPriceDraft_ValidVariables(t *testing.T) {
 	svc := printPrintingService()
 
-	uc := NewServiceUsecases(nil, nil)
+	uc := NewServiceUsecases(nil, nil, nil)
 
 	vars := []entity.OrderItemVariable{
 		{Name: "material", Type: "select", OptionValue: ptrStr("PLA")},
@@ -30,7 +30,7 @@ func TestPreviewPriceDraft_ValidVariables(t *testing.T) {
 	// Must match what PreviewPrice would compute for an equivalent saved service.
 	serviceRepo := newFakeServiceRepository()
 	serviceRepo.services[svc.ID] = svc
-	savedUC := NewServiceUsecases(serviceRepo, nil)
+	savedUC := NewServiceUsecases(serviceRepo, nil, nil)
 	savedPrice, err := savedUC.PreviewPrice(context.Background(), "user-1", svc.ID, vars)
 	if err != nil {
 		t.Fatalf("unexpected error from PreviewPrice: %v", err)
@@ -41,7 +41,7 @@ func TestPreviewPriceDraft_ValidVariables(t *testing.T) {
 }
 
 func TestPreviewPriceDraft_UnknownVariableInFormula(t *testing.T) {
-	uc := NewServiceUsecases(nil, nil)
+	uc := NewServiceUsecases(nil, nil, nil)
 
 	formula := "material * peso * tiempo"
 	schema := []catalog.VariableDefinition{
@@ -73,7 +73,7 @@ func TestPreviewPriceDraft_UnknownVariableInFormula(t *testing.T) {
 
 func TestPreviewPriceDraft_InvalidOptionSurfacesError(t *testing.T) {
 	svc := printPrintingService()
-	uc := NewServiceUsecases(nil, nil)
+	uc := NewServiceUsecases(nil, nil, nil)
 
 	vars := []entity.OrderItemVariable{
 		{Name: "material", Type: "select", OptionValue: ptrStr("PVC")},

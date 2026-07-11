@@ -14,7 +14,7 @@ import (
 )
 
 func TestServiceHandler_PreviewPriceDraft_Success(t *testing.T) {
-	uc := usecase.NewServiceUsecases(nil, nil)
+	uc := usecase.NewServiceUsecases(nil, nil, nil)
 	h := handler.NewServiceHandler(uc)
 
 	r, v1 := setupTestRouter()
@@ -48,7 +48,7 @@ func TestServiceHandler_PreviewPriceDraft_Success(t *testing.T) {
 }
 
 func TestServiceHandler_PreviewPriceDraft_UnknownVariableReturns422(t *testing.T) {
-	uc := usecase.NewServiceUsecases(nil, nil)
+	uc := usecase.NewServiceUsecases(nil, nil, nil)
 	h := handler.NewServiceHandler(uc)
 
 	r, v1 := setupTestRouter()

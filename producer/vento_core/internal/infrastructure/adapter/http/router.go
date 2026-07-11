@@ -101,6 +101,10 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 			internal.GET("/tools/products/:productId/stock", toolHandler.GetStock)
 			internal.GET("/tools/products/:productId", toolHandler.GetProductDetails)
 			internal.POST("/tools/products/search", toolHandler.SearchProducts)
+			internal.GET("/tools/services/search", toolHandler.SearchServices)
+			internal.POST("/tools/services/feasibility", toolHandler.CheckServiceFeasibility)
+			internal.GET("/tools/services/variables", toolHandler.GetServiceVariables)
+			internal.POST("/tools/services/price", toolHandler.GetServicePrice)
 			internal.GET("/tools/orders", businessToolHandler.GetOrders)
 			internal.GET("/tools/metrics", businessToolHandler.GetMetrics)
 			internal.GET("/tools/clients", businessToolHandler.GetClients)
@@ -165,6 +169,8 @@ func NewRouter(authHandler *handler.AuthHandler, productHandler *handler.Product
 		{
 			business.GET("", businessHandler.GetProfile)
 			business.POST("", businessHandler.SaveProfile)
+			business.PATCH("/agent-mode", businessHandler.UpdateAgentMode)
+			business.PATCH("/tone", businessHandler.UpdateTone)
 		}
 
 		dashboard := v1.Group("/dashboard")

@@ -18,6 +18,14 @@ func (uc *BusinessProfileUsecases) SaveProfile(ctx context.Context, profile *ent
 	return uc.repo.Save(ctx, profile)
 }
 
+func (uc *BusinessProfileUsecases) UpdateAgentMode(ctx context.Context, userID, mode string) error {
+	return uc.repo.UpdateAgentMode(ctx, userID, mode)
+}
+
+func (uc *BusinessProfileUsecases) UpdateTone(ctx context.Context, userID, tone string) error {
+	return uc.repo.UpdateTone(ctx, userID, tone)
+}
+
 func (uc *BusinessProfileUsecases) GetProfile(ctx context.Context, userID string) (*entity.BusinessProfile, error) {
 	return uc.repo.GetByUserID(ctx, userID)
 }

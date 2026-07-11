@@ -13,7 +13,7 @@ func TestPreviewPrice_ValidVariables(t *testing.T) {
 	svc := printPrintingService()
 	serviceRepo.services[svc.ID] = svc
 
-	uc := NewServiceUsecases(serviceRepo, nil)
+	uc := NewServiceUsecases(serviceRepo, nil, nil)
 
 	vars := []entity.OrderItemVariable{
 		{Name: "material", Type: "select", OptionValue: ptrStr("PLA")},
@@ -34,7 +34,7 @@ func TestPreviewPrice_InvalidOptionSurfacesError(t *testing.T) {
 	svc := printPrintingService()
 	serviceRepo.services[svc.ID] = svc
 
-	uc := NewServiceUsecases(serviceRepo, nil)
+	uc := NewServiceUsecases(serviceRepo, nil, nil)
 
 	vars := []entity.OrderItemVariable{
 		{Name: "material", Type: "select", OptionValue: ptrStr("PVC")},
@@ -52,7 +52,7 @@ func TestPreviewPrice_InvalidOptionSurfacesError(t *testing.T) {
 
 func TestPreviewPrice_ServiceNotFound(t *testing.T) {
 	serviceRepo := newFakeServiceRepository()
-	uc := NewServiceUsecases(serviceRepo, nil)
+	uc := NewServiceUsecases(serviceRepo, nil, nil)
 
 	_, err := uc.PreviewPrice(context.Background(), "user-1", "missing-svc", nil)
 	if err == nil {

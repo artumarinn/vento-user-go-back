@@ -66,7 +66,7 @@ func TestServiceHandler_PricePreview_Success(t *testing.T) {
 	repo := &seededServiceRepo{services: map[string]*entity.Service{
 		"svc-1": seededPrintingService(),
 	}}
-	uc := usecase.NewServiceUsecases(repo, nil)
+	uc := usecase.NewServiceUsecases(repo, nil, nil)
 	h := handler.NewServiceHandler(uc)
 
 	r, v1 := setupTestRouter()
@@ -92,7 +92,7 @@ func TestServiceHandler_PricePreview_EvaluatorErrorReturns422(t *testing.T) {
 	repo := &seededServiceRepo{services: map[string]*entity.Service{
 		"svc-1": seededPrintingService(),
 	}}
-	uc := usecase.NewServiceUsecases(repo, nil)
+	uc := usecase.NewServiceUsecases(repo, nil, nil)
 	h := handler.NewServiceHandler(uc)
 
 	r, v1 := setupTestRouter()

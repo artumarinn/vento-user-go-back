@@ -19,6 +19,13 @@ var (
 	// ErrUnknownVariableName indicates an order item references a variable
 	// name not declared on the Service's schema.
 	ErrUnknownVariableName = errors.New("pricing: unknown variable name")
+	// ErrServiceNotFoundForPricing indicates the service does not exist for
+	// this tenant — used by the AI agent's variable/price tool endpoints.
+	ErrServiceNotFoundForPricing = errors.New("pricing: service not found")
+	// ErrInvalidVariableValue indicates a raw variable value from an
+	// untyped map did not match the type its VariableDefinition declares
+	// (e.g. a number variable given a non-numeric JSON value).
+	ErrInvalidVariableValue = errors.New("pricing: invalid variable value type")
 )
 
 // buildVarMap validates an OrderItem's typed variable instances against the
